@@ -8,7 +8,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 - Python ≥3.10 + FastAPI (`findgnga/`), web sin build (`web/`: index.html, app.js, desk-view.js, desk3d.js, styles.css).
 - 3D: Three.js r160 copiado en `web/vendor/three/` (import map en index.html; sin npm ni CDN).
 - `./run.sh` (macOS/Linux) · `run.bat` (Windows) → http://127.0.0.1:8000
-- Tests: `.venv/bin/python -m pytest -q` (88 tests). CI: `.github/workflows/tests.yml`.
+- Tests: `.venv/bin/python -m pytest -q` (89 tests). CI: `.github/workflows/tests.yml`.
 - CLI: `python -m findgnga.cli refresh|diagnose|doctor|export|import`.
 
 ## Mapa del código
@@ -52,3 +52,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 ## Convenciones
 - Responder en español. Rama de trabajo: `claude/ecstatic-mccarthy-loj8uv`.
 - No inventar precios ni códigos promocionales; marcar lo orientativo como tal.
+- v0.6: precios por encima de la banda (hasta 1,6×) se aceptan como «📈 Inflado ×N» (aviso, −10 fiabilidad) en vez de
+  descartarse; en consolas se rechazan teles/monitores que mencionan la PS5 (`NOT_CONSOLE`). UI «liquid glass»
+  (capa al final de styles.css: fondo aurora, cristal con backdrop-filter, View Transitions en `go()`, respeta
+  reduced-motion); la dirección #vista y atrás/adelante cambian de sección (`hashchange`).

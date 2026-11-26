@@ -67,3 +67,17 @@ def test_serpapi_quota_out_is_detected():
                 return str(e)
     assert "búsquedas" in asyncio.run(run())
     assert serpapi.usage()["quota_out"]
+
+
+def test_inflated_prices_are_shown_and_tvs_are_not_consoles():
+    from findgnga.providers.engine import filter_listings
+    product, cat = find_product("ps5-slim-digital")
+    ref = float(product.get("msrp") or product["ref_price"])
+    rows = [{"title": "Consola PS5 Slim Digital Edition", "price": round(ref * 2, 2), "url": "https://www.mediamarkt.es/p1",
+             "store_id": "mediamarkt", "store_name": "MediaMarkt"},
+            {"title": "TV LG QNED 55 pulgadas 4K compatible PS5 Slim Digital", "price": round(ref * 2, 2), "url": "https://x.es/tv",
+             "store_id": "pccomponentes", "store_name": "PcComponentes"},
+            {"title": "Consola PS5 Slim Digital Edition", "price": ref * 5, "url": "https://x.es/caro"}]
+    acc, rej = filter_listings(product, cat, rows, {})
+    assert len(acc) == 1 and acc[0]["inflated"] >= 1.9
+    assert {r["reason"].split(" (")[0] for r in rej} == {"no es una consola", "precio fuera de lo razonable"}

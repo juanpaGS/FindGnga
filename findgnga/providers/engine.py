@@ -26,7 +26,7 @@ from .. import storage
 from ..pricing import live
 from ..pricing.core import price_offer
 from . import chollometro, idealo, serpapi, stores, verify
-from .base import condition_of, is_bundle, is_second_hand_site, matcher, new_client, price_band, resolve_store
+from .base import norm, condition_of, is_bundle, is_second_hand_site, matcher, new_client, price_band, resolve_store
 
 PROVIDERS = [
     {"id": "serpapi", "name": "Google Shopping (SerpApi)", "needs_key": True, "beta": False,
@@ -48,6 +48,8 @@ PROVIDERS = [
 ]
 
 CACHE_SECONDS = 20 * 60
+NOT_CONSOLE = re.compile(r"\b(tv|televisor|television|smart tv|monitor|qled|oled|qned|miniled|barra de sonido|soundbar|proyector)\b")
+INFLATED_MAX = 1.6  # hasta 1,6× el tope normal se enseña como «precio inflado» en vez de descartarlo
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
@@ -165,14 +167,21 @@ def filter_listings(product: dict[str, Any], category: str, listings: list[dict[
             ok, why = check(it.get("title", ""))
             if not ok:
                 reason = why
+            elif category == "console" and NOT_CONSOLE.search(norm(it.get("title", ""))):
+                reason = "no es una consola (tele, monitor o similar que la menciona)"
             elif it.get("reference"):
                 # Precio de referencia (Idealo): se muestra aunque esté por encima de lo normal, porque
                 # eso también es información (p. ej. sólo quedan vendedores de marketplace caros)
                 slug = (urlparse(it["url"]).path or "").replace("-", " ")
                 if category == "console" and (is_bundle(slug) or re.search(r"\b(bundle|controller|edition limited|fc \d\d)\b", slug)):
                     reason = "referencia de un pack, no de la consola sola"
-            elif not lo <= it["price"] <= hi:
+            elif it["price"] < lo:
+                reason = f"demasiado barato para ser el producto ({it['price']:.0f} €)"
+            elif it["price"] > hi * INFLATED_MAX:
                 reason = f"precio fuera de lo razonable ({it['price']:.0f} €)"
+            elif it["price"] > hi:
+                # Por encima de lo normal pero posible (escasez, reventa): se enseña marcado como inflado
+                it = {**it, "inflated": round(it["price"] / float(product.get("msrp") or product["ref_price"]), 2)}
         if reason:
             rejected.append({**it, "reason": reason})
             continue

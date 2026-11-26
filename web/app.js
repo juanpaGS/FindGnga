@@ -289,7 +289,7 @@ function offersTable(pricing) {
   if (!pricing.offers.length) return `<p class="muted small">Sin precios vigentes. Pulsa 🔎 Buscar precio ahora.</p>`;
   return `<div class="scroll-x"><table><tr><th>Tienda</th><th class="num">Precio</th><th class="num">Envío</th><th class="num">Cupón</th><th class="num">Total</th><th>Fuente</th><th></th></tr>
     ${pricing.offers.map((o) => `<tr class="${o.suspicious ? "sus" : ""}"><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener nofollow">${esc(o.store_name)} ↗</a>` : esc(o.store_name)}
-        ${o.suspicious ? ` <span class="badge b-bad" title="${esc((o.warnings || []).join(" · "))}">🚩 Sospechosa</span>` : ""}${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}${verifBadge(o)}${(o.warnings || []).length ? ` <span title="${esc(o.warnings.join(" · "))}">⚠️</span>` : ""}</td>
+        ${o.inflated ? ` <span class="badge b-warn" title="Por encima de lo normal">📈 Inflado ×${o.inflated.toFixed(1)}</span>` : ""}${o.suspicious ? ` <span class="badge b-bad" title="${esc((o.warnings || []).join(" · "))}">🚩 Sospechosa</span>` : ""}${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}${verifBadge(o)}${(o.warnings || []).length ? ` <span title="${esc(o.warnings.join(" · "))}">⚠️</span>` : ""}</td>
       <td class="num">${eur(o.price)}</td><td class="num">${eur(o.shipping_cost)}</td>
       <td class="num">${o.promo_code ? `−${eur(o.promo_discount)}` : "—"}</td><td class="num"><b>${eur(o.final_price)}</b></td>
       <td class="small muted">${sourceLabel(o.source)} · ${ago(o.checked_at)}</td>
@@ -879,10 +879,18 @@ function go(view) {
   location.hash = view;
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   window.scrollTo(0, 0);
-  VIEWS[view]();
+  const app = document.getElementById("app");
+  const render = () => { app.classList.remove("view-in"); VIEWS[view](); void app.offsetWidth; app.classList.add("view-in"); };
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (document.startViewTransition && !calm && !document.hidden) document.startViewTransition(render).ready.catch(() => {}); else render();
 }
 
 document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => go(b.dataset.view));
+// La dirección (#monitors…) y los botones atrás/adelante del navegador también cambian de sección
+window.addEventListener("hashchange", () => {
+  const v = location.hash.slice(1);
+  if (VIEWS[v] && v !== state.view) go(v);
+});
 
 (async function init() {
   try {
