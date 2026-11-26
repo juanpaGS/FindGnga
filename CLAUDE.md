@@ -28,7 +28,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
   alimenta los dispositivos del perfil, ids `desk-*`), `recommend` (accesorios de `data/accessories.json`,
   monitores que caben según pantallas externas admitidas, mejoras y «buen precio» ≤ 90 % de ref_price).
   Los accesorios son productos buscables (`engine.find_product` categoría `accessory`, banda 0,35–2,2×ref).
-  Web: pestañas 🪑 Mi escritorio (3D) y 🧩 Accesorios. ref_price de accesorios = ORIENTATIVO.
+  Web: pestañas 🪑 Mi escritorio (3D) y 🧩 Accesorios. «Mi setup» se quitó (duplicaba el escritorio): usos y presupuestos se editan en ⚙️ Ajustes → 🎯 Tus gustos. ref_price de accesorios = ORIENTATIVO.
 - `devices.py` catálogo de modelos (Macs generados por tabla + `data/devices.json` + monitores + accesorios colocables)
   con `suggest` (autocompletado por tokens; «exact» sólo si no hay empate) e `identify` (ficha completa, RAM/almacenamiento/
   color del texto; si no está en el catálogo, `parse` deduce la ficha, p. ej. «macbook m6 pro 32 gb»). `quality` = orientativa.

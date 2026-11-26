@@ -59,186 +59,7 @@ function newDevice(kind) {
   return base;
 }
 
-function wizard(existing) {
-  const defaults = { name: "", devices: [], uses: [], budget_monitor: 500, budget_console: 650, size_pref: "",
-    priority: 0.5, wants: ["monitor", "ps5"] };
-  const draft = Object.assign(defaults, existing ? structuredClone(existing) : {});
-  for (const k of ["budget_monitor", "budget_console", "name"]) if (draft[k] == null) draft[k] = defaults[k];
-  if (!draft.wants?.length) draft.wants = ["monitor", "ps5"];
-  let i = 0, shown = -1;
-
-  const steps = () => {
-    const s = [stepHello, stepDevices];
-    draft.devices.forEach((d) => { if (DETAIL[d.kind]) s.push((el) => DETAIL[d.kind](el, d)); });
-    s.push(stepUses, stepWants, stepPrefs, stepDone);
-    return s;
-  };
-
-  function render() {
-    const all = steps();
-    i = Math.min(i, all.length - 1);
-    app.innerHTML = `<div class="wizard"><div class="progress"><div style="width:${((i + 1) / all.length) * 100}%"></div></div>
-      <div class="step ${i !== shown ? "anim" : ""}" id="step"></div>
-      <div class="wiz-nav">
-        <button class="ghost" id="back" ${i === 0 ? "disabled" : ""}>← Atrás</button>
-        ${i < all.length - 1 ? `<button class="primary" id="next">Siguiente →</button>` : ""}
-      </div></div>`;
-    all[i]($("#step"));
-    shown = i;
-    $("#back").onclick = () => { i--; render(); };
-    const next = $("#next");
-    if (next) next.onclick = () => { i++; render(); };
-  }
-
-  function chips(el, options, isSel, onToggle) {
-    el.innerHTML = options.map(([v, label]) => `<button class="chip ${isSel(v) ? "sel" : ""}" data-v="${esc(v)}">${label}</button>`).join("");
-    el.querySelectorAll(".chip").forEach((b) => b.onclick = () => { onToggle(b.dataset.v); render(); });
-  }
-
-  function stepHello(el) {
-    el.innerHTML = `<div class="emoji">👋</div><h1>¡Vamos a por las gangas!</h1>
-      <p class="muted">Cuatro preguntas rápidas sobre tu setup y te digo qué comprar este Black Friday (y a qué precio merece la pena).</p>
-      <div class="field"><span class="lbl">¿Cómo te llamo?</span><input type="text" id="name" placeholder="Opcional" value="${esc(draft.name || "")}"></div>`;
-    $("#name").oninput = (e) => draft.name = e.target.value;
-  }
-
-  function stepDevices(el) {
-    el.innerHTML = `<div class="emoji">🏠</div><h1>¿Qué tienes ya en casa?</h1>
-      <p class="muted">Marca todo lo que quieras conectar al monitor. Así busco uno que sirva para todo.</p>
-      <div class="cards">${DEVICE_KINDS.map((k) => {
-        const n = draft.devices.filter((d) => d.kind === k.kind).length;
-        return `<button class="card-opt ${n ? "sel" : ""}" data-k="${k.kind}"><span class="big">${k.emoji}</span>${k.name}${n ? " ✓" : ""}</button>`;
-      }).join("")}</div>`;
-    el.querySelectorAll(".card-opt").forEach((b) => b.onclick = () => {
-      const k = b.dataset.k;
-      const idx = draft.devices.findIndex((d) => d.kind === k);
-      if (idx >= 0) draft.devices.splice(idx, 1); else draft.devices.push(newDevice(k));
-      render();
-    });
-  }
-
-  const DETAIL = {
-    mac_laptop(el, d) {
-      el.innerHTML = `<div class="emoji">💻</div><h1>Cuéntame de tu MacBook</h1>
-        <div class="field"><span class="lbl">Modelo</span><div class="chips" id="line"></div></div>
-        <div class="field"><span class="lbl">Pantalla</span><div class="chips" id="screen"></div></div>
-        <div class="field"><span class="lbl">Chip</span><div class="chips" id="gen"></div><div class="chips" id="tier"></div></div>
-        <div class="field"><span class="lbl">Memoria (RAM)</span><div class="chips" id="ram"></div></div>`;
-      chips($("#line"), [["pro", "MacBook Pro"], ["air", "MacBook Air"]], (v) => d.model_line === v, (v) => d.model_line = v);
-      chips($("#screen"), [13, 14, 15, 16].map((s) => [String(s), s + "\""]), (v) => String(d.screen_in) === v, (v) => d.screen_in = +v);
-      chips($("#gen"), [1, 2, 3, 4, 5, 6].map((g) => [String(g), "M" + g]), (v) => String(d.chip_gen) === v, (v) => d.chip_gen = +v);
-      chips($("#tier"), [["base", "Normal"], ["pro", "Pro"], ["max", "Max"]], (v) => d.chip_tier === v, (v) => d.chip_tier = v);
-      chips($("#ram"), [8, 16, 18, 24, 32, 36, 48, 64, 128].map((r) => [String(r), r + " GB"]), (v) => String(d.ram_gb) === v, (v) => d.ram_gb = +v);
-    },
-    mac_desktop(el, d) {
-      el.innerHTML = `<div class="emoji">🖥️</div><h1>Tu Mac de sobremesa</h1>
-        <div class="field"><span class="lbl">Modelo</span><div class="chips" id="line"></div></div>
-        <div class="field"><span class="lbl">Chip</span><div class="chips" id="gen"></div><div class="chips" id="tier"></div></div>`;
-      chips($("#line"), [["mini", "Mac mini"], ["studio", "Mac Studio"], ["imac", "iMac"]], (v) => d.model_line === v, (v) => d.model_line = v);
-      chips($("#gen"), [1, 2, 3, 4, 5, 6].map((g) => [String(g), "M" + g]), (v) => String(d.chip_gen) === v, (v) => d.chip_gen = +v);
-      chips($("#tier"), [["base", "Normal"], ["pro", "Pro"], ["max", "Max"], ["ultra", "Ultra"]], (v) => d.chip_tier === v, (v) => d.chip_tier = v);
-    },
-    windows_laptop(el, d) {
-      el.innerHTML = `<div class="emoji">🧳</div><h1>Tu portátil</h1>
-        <div class="field"><span class="lbl">Gráfica</span><div class="chips" id="gpu"></div></div>
-        <div class="field"><span class="lbl">¿Tiene USB-C con salida de vídeo?</span><div class="chips" id="usbc"></div></div>
-        <div class="field"><span class="lbl">¿Se carga por USB-C?</span><div class="chips" id="chg"></div></div>`;
-      gpuChips($("#gpu"), d);
-      chips($("#usbc"), [["1", "Sí"], ["0", "No / no lo sé"]], (v) => !!d.usb_c_dp === (v === "1"), (v) => d.usb_c_dp = v === "1");
-      chips($("#chg"), [["1", "Sí"], ["0", "No"]], (v) => !!d.usb_c_charging === (v === "1"), (v) => d.usb_c_charging = v === "1");
-    },
-    desktop_pc(el, d) {
-      el.innerHTML = `<div class="emoji">🗄️</div><h1>Tu PC</h1>
-        <div class="field"><span class="lbl">Gráfica</span><div class="chips" id="gpu"></div></div>`;
-      gpuChips($("#gpu"), d);
-    },
-    ps5(el, d) {
-      el.innerHTML = `<div class="emoji">🎮</div><h1>¿Qué PS5 tienes?</h1>
-        <div class="chips" id="ed"></div>`;
-      chips($("#ed"), [["digital", "Digital"], ["standard", "Con lector"], ["pro", "PS5 Pro"]], (v) => d.edition === v, (v) => d.edition = v);
-    },
-  };
-
-  function gpuChips(el, d) {
-    chips(el, [["integrated", "Integrada"], ["mid", "Media (RTX 4060/5060, RX 7600…)"], ["high", "Potente (RTX 4080/5080…)"]],
-      (v) => d.gpu_tier === v, (v) => d.gpu_tier = v);
-  }
-
-  function stepUses(el) {
-    el.innerHTML = `<div class="emoji">🎯</div><h1>¿Para qué vas a usar el monitor?</h1>
-      <p class="muted">Elige todo lo que aplique: cambia lo que más pesa en la nota (nitidez, color, Hz, HDR…).</p><div class="chips" id="uses"></div>`;
-    chips($("#uses"), USES, (v) => draft.uses.includes(v), (v) => {
-      draft.uses = draft.uses.includes(v) ? draft.uses.filter((u) => u !== v) : [...draft.uses, v];
-    });
-  }
-
-  function stepWants(el) {
-    el.innerHTML = `<div class="emoji">🛍️</div><h1>¿Qué buscas este Black Friday?</h1>
-      <div class="chips" id="wants"></div>
-      <div class="field" id="bm"><span class="lbl">Presupuesto máximo monitor: <span class="big-num" id="bmv"></span></span>
-        <input type="range" min="150" max="1800" step="25" id="bmr" value="${draft.budget_monitor || 500}"></div>
-      <div class="field" id="bc"><span class="lbl">Presupuesto máximo PS5: <span class="big-num" id="bcv"></span></span>
-        <input type="range" min="350" max="1000" step="10" id="bcr" value="${draft.budget_console || 650}"></div>`;
-    chips($("#wants"), [["monitor", "🖥️ Un monitor"], ["ps5", "🎮 Una PS5"]], (v) => draft.wants.includes(v), (v) => {
-      draft.wants = draft.wants.includes(v) ? draft.wants.filter((w) => w !== v) : [...draft.wants, v];
-    });
-    $("#bm").hidden = !draft.wants.includes("monitor");
-    $("#bc").hidden = !draft.wants.includes("ps5");
-    const upd = () => { $("#bmv").textContent = eur(+$("#bmr").value); $("#bcv").textContent = eur(+$("#bcr").value); };
-    $("#bmr").oninput = (e) => { draft.budget_monitor = +e.target.value; upd(); };
-    $("#bcr").oninput = (e) => { draft.budget_console = +e.target.value; upd(); };
-    upd();
-  }
-
-  function stepPrefs(el) {
-    el.innerHTML = `<div class="emoji">⚖️</div><h1>Últimos detalles</h1>
-      <div class="field"><span class="lbl">Tamaño que prefieres</span><div class="chips" id="size"></div></div>
-      <div class="field"><span class="lbl">¿Qué pesa más para ti?</span>
-        <input type="range" min="0" max="1" step="0.1" id="prio" value="${draft.priority}">
-        <div class="range-labels"><span>💸 Lo más barato</span><span>⚖️ Equilibrio</span><span>💎 La mejor calidad</span></div></div>`;
-    chips($("#size"), SIZES, (v) => (draft.size_pref || "") === v, (v) => draft.size_pref = v || null);
-    $("#prio").oninput = (e) => draft.priority = +e.target.value;
-  }
-
-  function stepDone(el) {
-    el.innerHTML = `<div class="emoji">🎉</div><h1>${draft.name ? esc(draft.name) + ", ¡listo!" : "¡Listo!"}</h1>
-      <p>Tu setup: ${draft.devices.length ? draft.devices.map((d) => `<b>${esc(deviceTitle(d))}</b>`).join(", ") : "<i>sin dispositivos</i>"}.</p>
-      <p class="error" id="save-err"></p>
-      <div class="actions" style="justify-content:flex-start">
-        ${draft.wants.includes("monitor") || !draft.wants.length ? `<button class="primary" id="go-mon">🖥️ Buscar monitor</button>` : ""}
-        ${draft.wants.includes("ps5") ? `<button class="primary" id="go-ps5">🎮 Buscar PS5</button>` : ""}
-      </div>`;
-    const save = async (view) => {
-      try { state.profile = await api("/api/profile", { method: "PUT", body: draft }); go(view); }
-      catch (e) { $("#save-err").textContent = "No se pudo guardar: " + e.message; }
-    };
-    $("#go-mon") && ($("#go-mon").onclick = () => save("monitors"));
-    $("#go-ps5") && ($("#go-ps5").onclick = () => save("ps5"));
-  }
-
-  render();
-}
-
 /* ------------------------------------------------------------------ vistas */
-
-function viewProfile() {
-  const p = state.profile;
-  if (!p || !p.devices?.length) return wizard(p);
-  app.innerHTML = `<h1>🧑‍💻 ${p.name ? esc(p.name) + ", este es tu setup" : "Tu setup"}</h1>
-    <div class="panel">
-      <ul>${p.devices.map((d) => `<li><b>${esc(deviceTitle(d))}</b></li>`).join("")}</ul>
-      <p class="muted">Usos: ${p.uses.map((u) => USES.find((x) => x[0] === u)?.[1] || u).join(" · ") || "—"}<br>
-      Presupuesto monitor: ${eur(p.budget_monitor)} · PS5: ${eur(p.budget_console)}</p>
-      <div class="actions" style="justify-content:flex-start">
-        <button class="secondary" id="edit">✏️ Editar respuestas</button>
-        <button class="primary" id="mon">🖥️ Buscar monitor</button>
-        <button class="primary" id="ps5">🎮 Buscar PS5</button>
-      </div>
-    </div>`;
-  $("#edit").onclick = () => wizard(p);
-  $("#mon").onclick = () => go("monitors");
-  $("#ps5").onclick = () => go("ps5");
-}
 
 function bar(label, value) {
   return `<div class="bar"><div class="lbl"><span>${label}</span><b>${Math.round(value)}</b></div>
@@ -470,7 +291,7 @@ async function viewMonitors() {
     <p class="muted">Puntuamos calidad (según tus usos) y compatibilidad (según lo que vas a conectar). El precio final incluye envío y el mejor cupón que tengas guardado.</p>
     <div class="panel controls">
       <div><span class="lbl"><b>¿Qué vas a conectar?</b></span><div class="chips" id="devs">${p.devices.map((d) =>
-        `<button class="chip ${q.device_ids.includes(d.id) ? "sel" : ""}" data-id="${esc(d.id)}">${esc(deviceLabelFor(d))}</button>`).join("") || `<span class="muted">Sin dispositivos: <a href="#" id="towiz">rellena tu setup</a></span>`}</div></div>
+        `<button class="chip ${q.device_ids.includes(d.id) ? "sel" : ""}" data-id="${esc(d.id)}">${esc(deviceLabelFor(d))}</button>`).join("") || `<span class="muted">Sin dispositivos: <a href="#" id="towiz">añádelos en Mi escritorio</a></span>`}</div></div>
       <div><b>Presupuesto: <span class="big-num" id="bv">${eur(q.budget)}</span></b><input type="range" id="budget" min="150" max="1800" step="25" value="${q.budget}"></div>
       <div><b>Prioridad</b><input type="range" id="prio" min="0" max="1" step="0.1" value="${q.priority}">
         <div class="range-labels"><span>💸 Precio</span><span>💎 Calidad</span></div></div>
@@ -486,7 +307,7 @@ async function viewMonitors() {
     q.device_ids = q.device_ids.includes(id) ? q.device_ids.filter((x) => x !== id) : [...q.device_ids, id];
     b.classList.toggle("sel"); load();
   });
-  $("#towiz") && ($("#towiz").onclick = (e) => { e.preventDefault(); go("profile"); });
+  $("#towiz") && ($("#towiz").onclick = (e) => { e.preventDefault(); go("desk"); });
   let t;
   $("#budget").oninput = (e) => { q.budget = +e.target.value; $("#bv").textContent = eur(q.budget); clearTimeout(t); t = setTimeout(load, 250); };
   $("#prio").oninput = (e) => { q.priority = +e.target.value; clearTimeout(t); t = setTimeout(load, 250); };
@@ -784,7 +605,20 @@ function serpCost(st) {
 
 async function viewSettings() {
   const st = state.settings = await api("/api/settings");
-  app.innerHTML = `<h1>⚙️ Ajustes de búsqueda</h1>
+  const p = state.profile || {};
+  const uses = new Set(p.uses || []);
+  app.innerHTML = `<h1>⚙️ Ajustes</h1>
+    <div class="panel"><h3>🎯 Tus gustos</h3>
+      <p class="small muted">Tus dispositivos salen de 🪑 Mi escritorio. Aquí ajustas para qué usas la pantalla y cuánto quieres gastar; cambia la nota de los monitores y el «buen precio».</p>
+      <div class="chips" id="pf-uses">${USES.map(([v, l]) => `<button class="chip ${uses.has(v) ? "sel" : ""}" data-v="${v}">${l}</button>`).join("")}</div>
+      <div class="controls">
+        <div><b>Presupuesto monitor: <span class="big-num" id="pf-bmv">${eur(p.budget_monitor || 500)}</span></b>
+          <input type="range" id="pf-bm" min="150" max="1800" step="25" value="${p.budget_monitor || 500}"></div>
+        <div><b>Presupuesto PS5: <span class="big-num" id="pf-bcv">${eur(p.budget_console || 650)}</span></b>
+          <input type="range" id="pf-bc" min="350" max="1000" step="10" value="${p.budget_console || 650}"></div>
+      </div>
+      <p class="small muted" id="pf-msg"></p>
+    </div>
     <div class="panel"><h3>🔑 Google Shopping (recomendado)</h3>
       <p class="small">Es como funcionan los comparadores: una sola consulta trae precio, tienda, envío y enlace de casi todas las tiendas españolas.
       Crea una cuenta gratuita en <a href="https://serpapi.com" target="_blank" rel="noopener">serpapi.com</a> y pega tu API key (el plan gratis da para buscar tus productos varias veces al día).
@@ -817,6 +651,17 @@ async function viewSettings() {
         <button class="secondary" id="export">⬇️ Descargar copia</button>
         <label class="secondary-btn">⬆️ Restaurar copia<input type="file" id="import" accept="application/json" hidden></label>
       </div><p class="small" id="bkOut"></p></div>`;
+
+  let pfT;
+  const pfSave = () => { clearTimeout(pfT); pfT = setTimeout(async () => {
+    const body = { ...(state.profile || {}), uses: [...uses], budget_monitor: +$("#pf-bm").value, budget_console: +$("#pf-bc").value };
+    try { state.profile = await api("/api/profile", { method: "PUT", body }); state.monQuery = null; $("#pf-msg").textContent = "✓ Guardado"; }
+    catch (e) { $("#pf-msg").textContent = "No se pudo guardar: " + e.message; }
+  }, 400); };
+  document.querySelectorAll("#pf-uses .chip").forEach((b) => b.onclick = () => {
+    uses.has(b.dataset.v) ? uses.delete(b.dataset.v) : uses.add(b.dataset.v); b.classList.toggle("sel"); pfSave(); });
+  $("#pf-bm").oninput = (e) => { $("#pf-bmv").textContent = eur(+e.target.value); pfSave(); };
+  $("#pf-bc").oninput = (e) => { $("#pf-bcv").textContent = eur(+e.target.value); pfSave(); };
   $("#vtop").onchange = (e) => save({ verify_top: Math.max(0, Math.min(20, +e.target.value || 0)) });
   $("#cacheh").onchange = (e) => save({ serpapi_cache_hours: Math.max(0, Math.min(72, +e.target.value || 0)) });
   $("#rlinks").onchange = (e) => save({ resolve_links: Math.max(0, Math.min(10, +e.target.value || 0)) });
@@ -870,7 +715,7 @@ async function viewSettings() {
 
 /* ------------------------------------------------------------------ router */
 
-const VIEWS = { profile: viewProfile, monitors: viewMonitors, ps5: viewPS5, shopcheck: viewShopCheck, when: viewWhen, promos: viewPromos, settings: viewSettings };
+const VIEWS = { profile: () => go("desk"), monitors: viewMonitors, ps5: viewPS5, shopcheck: viewShopCheck, when: viewWhen, promos: viewPromos, settings: viewSettings };
 
 function go(view) {
   if (state.desk3d) { state.desk3d.dispose(); state.desk3d = null; }
