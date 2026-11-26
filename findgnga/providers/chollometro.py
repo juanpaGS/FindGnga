@@ -18,9 +18,12 @@ from .extract import json_blobs, walk
 BASE = "https://www.chollometro.com"
 
 
-def parse_search(html: str) -> list[dict[str, Any]]:
+def parse_search(html: str, stats: dict[str, int] | None = None) -> list[dict[str, Any]]:
     _, blobs = json_blobs(html)
     out, seen = [], set()
+    stats = stats if stats is not None else {}
+    stats.setdefault("threads", 0)
+    stats.setdefault("expired", 0)
     for blob in blobs:
         for node in walk(blob):
             if "threadId" not in node or "title" not in node:
@@ -29,7 +32,9 @@ def parse_search(html: str) -> list[dict[str, Any]]:
             if tid in seen:
                 continue
             seen.add(tid)
-            if node.get("isExpired") or node.get("status") == "expired":
+            stats["threads"] += 1
+            if node.get("isExpired") or node.get("isGone") or node.get("status") == "expired":
+                stats["expired"] += 1
                 continue
             price = node.get("price")
             if not isinstance(price, (int, float)) or price <= 0:
@@ -50,18 +55,22 @@ def parse_search(html: str) -> list[dict[str, Any]]:
     return out
 
 
-async def search(client: httpx.AsyncClient, query: str) -> list[dict[str, Any]]:
+async def search(client: httpx.AsyncClient, query: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Devuelve (chollos vigentes, detalle para el diagnóstico)."""
     search_error = None
+    stats: dict[str, int] = {}
     try:
         html = await fetch_html(client, f"{BASE}/search?q={quote_plus(query)}")
-        items = parse_search(html)
-        if items:
-            return items
+        items = parse_search(html, stats)
+        detail = {"búsqueda": f"{stats['threads']} chollos, {stats['expired']} caducados → {len(items)} resultados"}
+        if items or stats["threads"]:
+            return items, detail
     except Exception as exc:
         search_error = f"{type(exc).__name__}: {exc}"
     feed = await deals.fetch_deals(query)
     if search_error and feed["errors"] and not feed["items"]:
         raise RuntimeError(f"búsqueda: {search_error}; RSS: {'; '.join(feed['errors'])}")
-    return [{"title": d["title"], "price": d["price"], "url": d["url"], "deal_url": d["url"],
-             "store_name": d["merchant"], "code": d["code"], "in_stock": True}
-            for d in feed["items"] if d.get("price")]
+    items = [{"title": d["title"], "price": d["price"], "url": d["url"], "deal_url": d["url"],
+              "store_name": d["merchant"], "code": d["code"], "in_stock": True}
+             for d in feed["items"] if d.get("price")]
+    return items, {"rss": f"{len(items)} resultados"}

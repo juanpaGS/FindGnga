@@ -288,8 +288,8 @@ function priceBlock(pricing) {
 function offersTable(pricing) {
   if (!pricing.offers.length) return `<p class="muted small">Sin precios vigentes. Pulsa 🔎 Buscar precio ahora.</p>`;
   return `<div class="scroll-x"><table><tr><th>Tienda</th><th class="num">Precio</th><th class="num">Envío</th><th class="num">Cupón</th><th class="num">Total</th><th>Fuente</th><th></th></tr>
-    ${pricing.offers.map((o) => `<tr><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.store_name)} ↗</a>` : esc(o.store_name)}
-        ${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}${verifBadge(o)}${(o.warnings || []).length ? ` <span title="${esc(o.warnings.join(" · "))}">⚠️</span>` : ""}</td>
+    ${pricing.offers.map((o) => `<tr class="${o.suspicious ? "sus" : ""}"><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener nofollow">${esc(o.store_name)} ↗</a>` : esc(o.store_name)}
+        ${o.suspicious ? ` <span class="badge b-bad" title="${esc((o.warnings || []).join(" · "))}">🚩 Sospechosa</span>` : ""}${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}${verifBadge(o)}${(o.warnings || []).length ? ` <span title="${esc(o.warnings.join(" · "))}">⚠️</span>` : ""}</td>
       <td class="num">${eur(o.price)}</td><td class="num">${eur(o.shipping_cost)}</td>
       <td class="num">${o.promo_code ? `−${eur(o.promo_discount)}` : "—"}</td><td class="num"><b>${eur(o.final_price)}</b></td>
       <td class="small muted">${sourceLabel(o.source)} · ${ago(o.checked_at)}</td>
@@ -363,6 +363,8 @@ const oldPrice = (o) => o.old_price && o.old_price > o.price ? ` <s class="muted
 function buyButton(o) {
   if (o.dead_link) return `<span class="muted small">Ya no existe</span>`;
   if (o.in_stock === false) return `<span class="muted small">Agotado</span>`;
+  // Una tienda falsa también "confirma" su precio: nunca botón de compra si la oferta es sospechosa
+  if (o.suspicious) return `<a class="go ghosty" href="${esc(o.url)}" target="_blank" rel="noopener nofollow" title="Posible tienda falsa o precio sospechoso: no compres sin comprobarla">⚠️ Sospechosa ↗</a>`;
   if (isConfirmed(o)) return `<a class="go buy" href="${esc(o.url)}" target="_blank" rel="noopener" title="Precio y stock comprobados ahora en la tienda">🛒 Comprar ya</a>`;
   if (isGoogle(o.url)) return `<a class="go ghosty" href="${esc(o.url)}" target="_blank" rel="noopener" title="Enlace a Google Shopping: desde ahí eliges tienda">Ver en Google ↗</a>`;
   return `<a class="go ghosty" href="${esc(o.url)}" target="_blank" rel="noopener" title="No se pudo comprobar en la tienda: revisa precio y stock">Ir (sin comprobar) ↗</a>`;

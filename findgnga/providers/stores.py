@@ -12,7 +12,9 @@ from .. import storage
 from .base import fetch_html
 from .extract import extract_listings
 
-SKIP = {"aliexpress", "coolmod", "backmarket", "ebay"}  # sólo JS o cubiertas por SerpApi
+# Sólo JS o cubiertas por SerpApi. Game y Carrefour: su buscador se ejecuta en el navegador
+# (game.es/buscar/... da 404 y carrefour.es/?q=... devuelve la portada sin productos).
+SKIP = {"aliexpress", "coolmod", "backmarket", "ebay", "game", "carrefour"}
 
 
 async def _one(client: httpx.AsyncClient, store: dict[str, Any], query: str) -> tuple[str, list[dict[str, Any]], str | None]:

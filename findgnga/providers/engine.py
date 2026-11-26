@@ -17,6 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from urllib.parse import urlparse
+
 import httpx
 
 from .. import settings as settings_mod
@@ -62,7 +64,8 @@ def _snapshot_hook(folder: Path):
 
     async def hook(resp: httpx.Response) -> None:
         await resp.aread()
-        name = re.sub(r"[^a-zA-Z0-9]+", "_", f"{resp.url.host}{resp.url.path}")[:80]
+        engine = resp.url.params.get("engine")
+        name = re.sub(r"[^a-zA-Z0-9]+", "_", f"{resp.url.host}{resp.url.path}" + (f"_{engine}" if engine else ""))[:80]
         (folder / f"{name}_{resp.status_code}.html").write_text(resp.text, encoding="utf-8", errors="ignore")
     return hook
 
@@ -155,6 +158,12 @@ def filter_listings(product: dict[str, Any], category: str, listings: list[dict[
             ok, why = check(it.get("title", ""))
             if not ok:
                 reason = why
+            elif it.get("reference"):
+                # Precio de referencia (Idealo): se muestra aunque esté por encima de lo normal, porque
+                # eso también es información (p. ej. sólo quedan vendedores de marketplace caros)
+                slug = (urlparse(it["url"]).path or "").replace("-", " ")
+                if category == "console" and (is_bundle(slug) or re.search(r"\b(bundle|controller|edition limited|fc \d\d)\b", slug)):
+                    reason = "referencia de un pack, no de la consola sola"
             elif not lo <= it["price"] <= hi:
                 reason = f"precio fuera de lo razonable ({it['price']:.0f} €)"
         if reason:
@@ -225,7 +234,7 @@ def save(product_id: str, priced: list[dict[str, Any]]) -> list[dict[str, Any]]:
     storage.write_user("offers", kept + new)
     hist = storage.read_user("price_history", [])
     for o in best.values():
-        if o["condition"] == "new" and o.get("in_stock") is not False:
+        if o["condition"] == "new" and o.get("in_stock") is not False and not o.get("suspicious"):
             hist.append({"product_id": product_id, "store": o["store"], "price": o["price"], "date": now})
     storage.write_user("price_history", hist[-5000:])
     return new
@@ -244,8 +253,14 @@ async def resolve_direct_links(product: dict[str, Any], category: str, accepted:
     key = cfg.get("serpapi_key")
     if n <= 0 or not key:
         return accepted
+    ref = float(product.get("msrp") or product.get("ref_price") or 0)
+
+    def likely_fake(a: dict[str, Any]) -> bool:
+        # Tienda desconocida muy por debajo del precio oficial: casi siempre una tienda falsa.
+        # No gastamos búsquedas del plan en abrir su ficha; ya la juzgará el detector.
+        return a["store"].startswith("x-") and bool(ref) and a["price"] < 0.75 * ref
     cands = sorted((a for a in accepted if a["provider"] == "serpapi" and a.get("immersive_token")
-                    and a["condition"] == "new"), key=lambda a: a["price"])
+                    and a["condition"] == "new"), key=lambda a: (likely_fake(a), a["price"]))
     tokens: list[tuple[str, str]] = []
     for a in cands:
         if a["immersive_token"] not in {t for t, _ in tokens}:

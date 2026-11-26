@@ -7,7 +7,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 ## Stack y arranque
 - Python ≥3.10 + FastAPI (`findgnga/`), web sin build (`web/`: index.html, app.js, styles.css).
 - `./run.sh` (macOS/Linux) · `run.bat` (Windows) → http://127.0.0.1:8000
-- Tests: `.venv/bin/python -m pytest -q` (50 tests). CI: `.github/workflows/tests.yml`.
+- Tests: `.venv/bin/python -m pytest -q` (67 tests). CI: `.github/workflows/tests.yml`.
 - CLI: `python -m findgnga.cli refresh|diagnose|doctor|export|import`.
 
 ## Mapa del código
@@ -26,7 +26,10 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 ## Estado / pendiente
 - Desde el contenedor cloud NO hay red a tiendas: los lectores beta (chollometro/idealo/stores)
   no se han probado con HTML real. Pedir al usuario `cli diagnose` y sus snapshots para afinarlos.
-- Siguiente paso: el usuario configura la API key de SerpApi en ⚙️ Ajustes y prueba en su Mac.
+- Probado en el Mac (26 nov 2026) con HTML real (fixtures `tests/fixtures/real_*`): Google Shopping ya no da `link`
+  (hay que resolver con immersive); Game/Carrefour sólo buscan con JS (en SKIP); Fnac/ECI/Worten/Idealo dan 403.
+  Precio real PS5 Slim ≈1.080–1.230 € (marketplaces), fuera de la banda 0,55–1,6×PVP. Tiendas falsas vistas:
+  homegeares.es, garantie2ans.com, laserie50.com (el detector las marca 🚩 y nunca son la "mejor").
 - PVP PS5 España (abr 2026): Digital 599,99 · Standard 649,99 · Pro 899,99.
 
 ## Convenciones

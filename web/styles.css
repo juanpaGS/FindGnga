@@ -84,6 +84,7 @@ input[type="text"], input[type="number"], input[type="url"], input[type="date"],
 .b-rec { background: var(--accent); color: #fff; } .b-q { background: var(--info-soft); color: var(--info); }
 .b-c { background: var(--good-soft); color: var(--good); } .b-cheap { background: var(--warn-soft); color: var(--warn); }
 .b-est { background: var(--surface-2); color: var(--muted); } .b-live { background: var(--good-soft); color: var(--good); }
+.b-bad { background: var(--bad-soft); color: var(--bad); }
 .bars { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 16px; margin: 12px 0; }
 .bar .lbl { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
 .bar .track { height: 8px; background: var(--surface-2); border-radius: 99px; overflow: hidden; }

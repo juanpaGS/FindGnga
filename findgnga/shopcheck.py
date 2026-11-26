@@ -42,7 +42,8 @@ FOREIGN_WORDS = {
     "francés": ("paiement", "securise", "copier", "livraison", "panier", "commande", "virement", "valider",
                 "beneficiaire", "gratuite"),
     "alemán": ("zahlung", "kasse", "uberweisung", "warenkorb", "bestellen", "versand", "kostenlos"),
-    "inglés": ("checkout", "payment", "bank transfer", "shipping", "add to cart", "place order"),
+    "inglés": ("checkout", "payment", "bank transfer", "shipping", "add to cart", "place order",
+               "available in stock", "out of stock", "buy now"),
 }
 SPANISH_WORDS = ("envio", "pago", "pedido", "carrito", "transferencia", "gratis", "datos", "realizado", "condiciones")
 CARD_WORDS = ("tarjeta", "visa", "mastercard", "paypal", "apple pay", "google pay", "klarna", "contrareembolso",
@@ -226,6 +227,52 @@ def text_signals(text: str, store_name: str | None = None, full_page: bool = Fal
     return sig
 
 
+DISCOUNT_RE = re.compile(r"(?<![\w.,])-\s?(\d{1,2})\s?%")
+UPLOAD_RE = re.compile(r"/wp-content/uploads/(20\d\d)/(\d\d)/")
+ORG_RE = re.compile(r'"@type"\s*:\s*"Organization"')
+ORG_FIELD_RE = re.compile(r'"(@id|url)"\s*:\s*"(https?://[^"]+)"')
+
+
+def page_signals(page: str, url: str, today: date | None = None) -> list[dict[str, Any]]:
+    """Señales del HTML de la propia tienda (no del texto visible): descuentos, fechas y datos de empresa.
+
+    * El mismo descuento (p. ej. −30 %) en todos los productos: las tiendas falsas aplican un
+      porcentaje fijo a un catálogo copiado; una tienda real tiene descuentos distintos.
+    * Casi todas las imágenes subidas en los últimos meses (WordPress guarda la fecha en la ruta):
+      sustituye a la antigüedad del dominio cuando RDAP no la da (los .es no la publican).
+    * Su propia ficha de empresa (schema.org) apunta a otro dominio.
+    """
+    if not page:
+        return []
+    sig: list[dict[str, Any]] = []
+    # Sobre el texto visible: en el CSS abundan cosas como translate(-50%)
+    disc = [int(m.group(1)) for m in DISCOUNT_RE.finditer(html_to_text(page)) if 5 <= int(m.group(1)) <= 90]
+    if len(disc) >= 5:
+        top = max(set(disc), key=disc.count)
+        if disc.count(top) / len(disc) >= 0.8:
+            sig.append(_sig("uniform_discount", "danger", 30, f"El mismo descuento (−{top} %) en todos los productos",
+                            "Las tiendas falsas copian un catálogo y le restan un porcentaje fijo; "
+                            "en una tienda real cada producto tiene su propio descuento."))
+    today = today or date.today()
+    months = [(today.year - int(y)) * 12 + today.month - int(m) for y, m in UPLOAD_RE.findall(page)]
+    if len(months) >= 10:
+        recent = sum(0 <= d <= 6 for d in months) / len(months)
+        if recent >= 0.8:
+            sig.append(_sig("recent_site", "warn", 15, "Casi todo el contenido de la web se subió hace pocos meses",
+                            f"El {round(recent * 100)} % de las imágenes son de los últimos 6 meses: "
+                            "parece una tienda recién montada."))
+    here = registrable(urlparse(url if "//" in url else "https://" + url).hostname or "")
+    for m in ORG_RE.finditer(page):
+        # Sólo la ficha de la propia tienda (su @id es de este dominio), no la de la marca (Sony, etc.)
+        fields = dict((k, registrable(urlparse(v).hostname or "")) for k, v in ORG_FIELD_RE.findall(page[m.end():m.end() + 400]))
+        own = fields.get("url")
+        if here and fields.get("@id") == here and own and own != here:
+            sig.append(_sig("schema_domain", "warn", 15, "La web dice ser de otro dominio",
+                            f"Sus datos de empresa apuntan a {own}, pero estás en {here}."))
+            break
+    return sig
+
+
 # ------------------------------------------------------------------ en línea
 
 async def domain_age_days(client: httpx.AsyncClient, domain: str, today: date | None = None) -> int | None:
@@ -287,12 +334,15 @@ def reference_price(product_id: str | None) -> tuple[float | None, str]:
 
 
 def quick_check(url: str, store_name: str | None = None, price: float | None = None,
-                ref: float | None = None, text: str = "") -> dict[str, Any]:
-    """Comprobación sin internet (dirección, precio y texto pegado)."""
+                ref: float | None = None, text: str = "",
+                extra: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Comprobación sin internet (dirección, precio, texto pegado y señales ya calculadas de su página)."""
     sig, info = domain_signals(url, store_name)
     if not info["known"]:
         sig += price_signals(price, ref)
         sig += text_signals(text, store_name)
+        seen = {s["id"] for s in sig}
+        sig += [dict(s) for s in extra or [] if s["id"] not in seen]
     return {**verdict(sig), **info, "online": False}
 
 
@@ -322,6 +372,7 @@ async def check(url: str, store_name: str | None = None, price: float | None = N
                     page_text = html_to_text(r.text)
                     seen = {s["id"] for s in sig}
                     sig += [s for s in text_signals(page_text, store_name, full_page=True) if s["id"] not in seen]
+                    sig += [s for s in page_signals(r.text, str(r.url), today) if s["id"] not in seen]
                     m = re.search(r'<html[^>]*\blang="([a-z]{2})', r.text, re.I)
                     if m and m.group(1).lower() not in ("es", "ca", "gl", "eu") and "language_mix" not in seen:
                         sig.append(_sig("page_lang", "warn", 10, f"La web está declarada en otro idioma ({m.group(1)})"))

@@ -1,0 +1,47 @@
+{
+ "_comment": "Recorte real de SerpApi engine=google_shopping q='PS5 Slim Digital' (26/11/2026); sin campo link",
+ "shopping_results": [
+  {
+   "position": 5,
+   "title": "Consola PS5 Sony Playstation 5 Digital",
+   "product_id": "12827288938672606365",
+   "product_link": "https://www.google.es/search?ibp=oshop&q=PS5 Slim Digital&prds=catalogid:12827288938672606365,productid:9143156597342020557,headlineOfferDocid:5041698248312207787,imageDocid:16966666697726921090,rds:PC_11526364654750362985|PROD_PC_11526364654750362985,gpcid:11526364654750362985,mid:576462917393441586,pvt:hg&hl=es&gl=es&udm=28",
+   "immersive_product_page_token": "token-Carrefour",
+   "source": "Carrefour",
+   "multiple_sources": true,
+   "price": "510,19 €",
+   "extracted_price": 510.19,
+   "old_price": "Normalmente 650 €",
+   "extracted_old_price": 650,
+   "rating": 4.4,
+   "reviews": 228,
+   "tag": "PRECIO BAJO",
+   "extensions": [
+    "PRECIO BAJO"
+   ]
+  },
+  {
+   "position": 10,
+   "title": "PlayStation 5 Sony Slim Digital",
+   "product_id": "13079817424240340345",
+   "product_link": "https://www.google.es/search?ibp=oshop&q=PS5 Slim Digital&prds=catalogid:13079817424240340345,productid:16359631618188330089,headlineOfferDocid:7549544340632482690,imageDocid:15516544049807482191,rds:PC_13530409707824924280|PROD_PC_13530409707824924280,gpcid:13530409707824924280,mid:576462917387356320,pvt:hg&hl=es&gl=es&udm=28",
+   "immersive_product_page_token": "token-CamiEstagel",
+   "source": "Cami Estagel",
+   "multiple_sources": true,
+   "price": "349,99 €",
+   "extracted_price": 349.99,
+   "rating": 4.5,
+   "reviews": 8900
+  },
+  {
+   "position": 26,
+   "title": "Modded PS5 Slim Digital | Jailbreak Homebrew Enabler 1 TB / No / 2 years",
+   "product_id": "8462403298957820213",
+   "product_link": "https://www.google.es/search?ibp=oshop&q=PS5 Slim Digital&prds=productid:8462403298957820213,headlineOfferDocid:8462403298957820213,imageDocid:5637310010492674457,pvt:hg&hl=es&gl=es&udm=28",
+   "immersive_product_page_token": "token-ConsoleModding.it",
+   "source": "ConsoleModding.it",
+   "price": "799,99 €",
+   "extracted_price": 799.99
+  }
+ ]
+}

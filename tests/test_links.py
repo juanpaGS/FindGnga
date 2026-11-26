@@ -120,4 +120,4 @@ def test_parse_idealo_reference():
         {"title": "Otra web", "link": "https://www.otra.es/ps5", "snippet": "desde 100 €"}]}
     refs = serpapi.parse_idealo(data)
     assert [r["price"] for r in refs] == [529.0, 535.0]
-    assert refs[0]["reference"] and refs[0]["title"] == "Sony PlayStation 5 Slim Digital desde 529,00 €"
+    assert refs[0]["reference"] and refs[0]["title"] == "Sony PlayStation 5 Slim Digital"

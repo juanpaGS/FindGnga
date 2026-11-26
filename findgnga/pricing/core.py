@@ -108,7 +108,9 @@ def best_price(product: dict[str, Any], offers: list[dict[str, Any]], stores: di
         (valid if ok else stale).append(price_offer(o, product, stores, promos, today))
     # Primero lo comprobado en la tienda (o metido por ti); lo automático sin comprobar va detrás
     valid.sort(key=lambda o: (bool(o.get("suspicious")), not _confirmed(o), o["final_price"]))
-    if valid:
-        best = valid[0]
+    # Una oferta sospechosa (posible tienda falsa) se enseña en la lista, pero nunca como mejor precio
+    candidates = [o for o in valid if not o.get("suspicious")]
+    if candidates:
+        best = candidates[0]
         return {"final_price": best["final_price"], "estimated": False, "best": best, "offers": valid, "stale": stale}
-    return {"final_price": float(product["ref_price"]), "estimated": True, "best": None, "offers": [], "stale": stale}
+    return {"final_price": float(product["ref_price"]), "estimated": True, "best": None, "offers": valid, "stale": stale}

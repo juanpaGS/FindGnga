@@ -1,0 +1,59 @@
+{
+ "_comment": "Recorte real de SerpApi engine=google, q='PS5 Slim Digital site:idealo.es' (26/11/2026)",
+ "organic_results": [
+  {
+   "position": 1,
+   "title": "Sony PlayStation 5 Slim (PS5 Slim) Digital Edition",
+   "link": "https://www.idealo.es/precios/203554857/sony-playstation-5-slim-ps5-slim-digital-edition.html",
+   "snippet": "Con 825 GB de memoria interna (ampliable) y un precio ventajoso, resulta especialmente atractiva para los jugadores expertos en juegos digitales. Conclusión: ...",
+   "rich_snippet": {
+    "top": {
+     "detected_extensions": {
+      "rating": 4.3,
+      "reviews": 39,
+      "price": 1078.36,
+      "currency": "€"
+     },
+     "extensions": [
+      "4,3(39)",
+      "1078,36 €"
+     ]
+    }
+   }
+  },
+  {
+   "position": 3,
+   "title": "Consola PS5 al mejor precio",
+   "link": "https://www.idealo.es/cat/3189F106038222/consolas.html",
+   "snippet": "Consola PS5, AMD Ryzen „Zen 2“, 8 núcleos, Memoria RAM 16.384 MB, Tipo de RAM GDDR6, HDMI, WiFi. Nota media 9,5/10. 39. 25 ofertas. desde1.105,55 €."
+  },
+  {
+   "position": 7,
+   "title": "Videoconsola Sony (2026) al mejor precio",
+   "link": "https://www.idealo.es/cat/3189F2475844-2475881/consolas.html",
+   "snippet": "Consola PS5, AMD Ryzen „Zen 2“, 8 núcleos, Memoria RAM 16.384 MB, Tipo de RAM GDDR6, HDMI, WiFi. Nota media 9,5/10. 39. 27 ofertas. desde989,99 €."
+  },
+  {
+   "position": 10,
+   "title": "Sony PlayStation 5 Slim (PS5 Slim) Digital Edition",
+   "link": "https://www.idealo.es/precios/208438551/sony-playstation-5-slim-ps5-slim-digital-edition-825gb-fortnite-flowering-chaos-bundle.html",
+   "snippet": "Tipos de producto, Consola PS5, Videoconsola. Memoria interna, 825 GB. Año de lanzamiento, 2025. Jugador. Clasificación PEGI, 12 años. Memoria.",
+   "rich_snippet": {
+    "top": {
+     "detected_extensions": {
+      "rating": 4.3,
+      "reviews": 39,
+      "price_from": 1379.99,
+      "price_to": 1525.21,
+      "currency": "€"
+     },
+     "extensions": [
+      "4,3(39)",
+      "Desde 1.379,99 € hasta 1.525,21 €",
+      "En stock"
+     ]
+    }
+   }
+  }
+ ]
+}

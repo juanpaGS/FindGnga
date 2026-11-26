@@ -67,6 +67,9 @@ ACCESSORY = (r"\b(mando|dualsense|funda|carcasa|soporte|cargador|cable|auricular
              r"brazo|limpiador|ventilador|maleta|bolsa)\b")
 
 
+# Consolas o productos modificados (jailbreak, chip…): sin garantía y a veces ilegales
+MODDED_RE = re.compile(r"\b(modded|modificad[ao]s?|jailbreak|jailbroken|homebrew|chipead[ao]s?|flasheada?s?|hackead[ao]s?)\b")
+
 BUNDLE_RE = re.compile(r"\b(pack|bundle|mandos?|juegos?|incluye|regalo)\b")
 
 
@@ -89,6 +92,8 @@ def matcher(product: dict[str, Any], reject_accessories: bool = True):
 
     def check(title: str) -> tuple[bool, str]:
         n, c = norm(title), compact(title)
+        if MODDED_RE.search(n):
+            return False, "consola modificada (jailbreak)"
         if codes and not any(code in c for code in codes):
             return False, "no es el modelo"
         for r in all_re:
@@ -107,7 +112,7 @@ def price_band(product: dict[str, Any], category: str) -> tuple[float, float]:
 
 
 SECOND_HAND_SITES = ("wallapop", "vinted", "milanuncios", "todocoleccion", "cashconverters", "cash converters",
-                     "backmarket", "back market", "eurocash")
+                     "backmarket", "back market", "eurocash", "webuy.com", "cex", "realcash", "segunda mano")
 
 
 def is_second_hand_site(store_name: str | None, url: str | None) -> bool:

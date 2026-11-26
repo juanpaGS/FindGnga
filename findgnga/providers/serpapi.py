@@ -185,7 +185,9 @@ def parse_idealo(data: dict[str, Any]) -> list[dict[str, Any]]:
             price = parse_price(m.group(1)) if m else None
         if not price:
             continue
-        out.append({"title": re.sub(r"\s*[|–][^|–]*idealo.*$", "", r.get("title", ""), flags=re.I), "price": float(price),
+        title = re.sub(r"\s*[|–][^|–]*idealo.*$", "", r.get("title", ""), flags=re.I)
+        title = re.sub(r"\s+(desde|a partir de)\s+[\d.,]+\s*€.*$", "", title, flags=re.I)
+        out.append({"title": title, "price": float(price),
                     "url": link, "store_name": "Idealo", "store_id": "idealo", "reference": True})
     return out
 

@@ -37,6 +37,10 @@ def _verify_url(o: dict[str, Any]) -> str | None:
 REMOVED_RE = re.compile(r"ya no est[aá] disponible|producto no disponible|art[ií]culo no disponible|no se ha encontrado|"
                         r"no hemos encontrado|p[aá]gina no encontrada|este anuncio ya no|ha sido vendido|art[ií]culo vendido|"
                         r"descatalogado|page not found", re.I)
+# Agotado aunque la página no lo diga en sus datos estructurados (Magento "stock unavailable",
+# WooCommerce "stock out-of-stock", botón "Avísame cuando/disponibilidad"). "Avísame bajada de precio" no cuenta.
+OUT_OF_STOCK_RE = re.compile(r'class="[^"]*\bstock (?:unavailable|out-of-stock)\b|>\s*(?:no est[aá] disponible|temporalmente agotado|'
+                             r'sin stock|fuera de stock)\s*<|av[ií]same (?:cuando|disponibilidad|si vuelve|cuando est[eé])', re.I)
 HOME_PATHS = {"", "es", "es-es", "es_es", "home", "index.html", "es/home", "inicio"}
 
 
@@ -63,12 +67,23 @@ async def verify_offer(client: httpx.AsyncClient, o: dict[str, Any], sem: asynci
         return {"status": "unverifiable", "note": f"la tienda respondió {resp.status_code}"}
     if is_homepage_redirect(url, final_url):
         return {"status": "gone", "note": "la tienda redirige a su portada: la oferta ya no existe"}
-    data = live.extract_price(resp.text)
+    res = _read_page(o, resp.text, final_url)
+    if str(o.get("store", "")).startswith("x-"):
+        # Tienda desconocida: ya tenemos su página, así que se analiza con el detector de tiendas falsas
+        res["shop_signals"] = (shopcheck.text_signals(shopcheck.html_to_text(resp.text), o.get("store_name"), full_page=True)
+                               + shopcheck.page_signals(resp.text, final_url))
+    return res
+
+
+def _read_page(o: dict[str, Any], page: str, final_url: str) -> dict[str, Any]:
+    data = live.extract_price(page)
+    if data.get("in_stock") is None and OUT_OF_STOCK_RE.search(page[:400_000]):
+        data["in_stock"] = False
     if data.get("in_stock") is False:
         return {"status": "out_of_stock", "note": "agotado en la tienda", "final_url": final_url}
     price = data.get("price")
     if not price:
-        if REMOVED_RE.search(resp.text[:300_000]):
+        if REMOVED_RE.search(page[:300_000]):
             return {"status": "gone", "note": "la página dice que el producto ya no está disponible"}
         return {"status": "unverifiable", "note": "la página no publica el precio", "final_url": final_url}
     if abs(price - o["price"]) <= max(1.0, o["price"] * 0.02):
@@ -102,7 +117,9 @@ async def verify_top(client: httpx.AsyncClient, offers: list[dict[str, Any]], to
                 o["price"] = r["page_price"]
             if r.get("final_url") and r["status"] in ("verified", "price_changed"):
                 o["url"] = r["final_url"]
-        if any(r["status"] in ("verified", "price_changed") for r in results):
+        # Basta con una tienda conocida confirmada: una desconocida "confirmada" puede ser una tienda falsa
+        if any(r["status"] in ("verified", "price_changed") and not str(o.get("store", "")).startswith("x-")
+               for o, r in zip(batch, results)):
             break
     for o in offers:
         if o.get("trusted"):
@@ -129,12 +146,22 @@ AGGREGATOR_HOSTS = ("google.", "chollometro.", "idealo.", "serpapi.")
 
 
 def shop_risk(o: dict[str, Any], ref: float | None) -> dict[str, Any] | None:
-    """Detector de tiendas falsas (sin internet) para tiendas que no están en la lista."""
+    """Detector de tiendas falsas (sin internet) para tiendas que no están en la lista.
+
+    Usa la dirección, el precio y, si se verificó la oferta, lo que se vio en su página.
+    Con un enlace de Google (no sabemos el dominio de la tienda) sólo se juzga el precio.
+    """
     url = o.get("shop_url") or o.get("url") or ""
     host = (urlparse(url).hostname or "").lower()
     if not host or any(h in host for h in AGGREGATOR_HOSTS):
-        return None
-    return shopcheck.quick_check(url, o.get("store_name"), o.get("price"), ref)
+        sig = shopcheck.price_signals(o.get("price"), ref)
+        if not any(s["level"] in ("danger", "warn") for s in sig):
+            return None
+        sig.append(shopcheck._sig("unknown_store", "info", 15, "Tienda que FindGnga no conoce",
+                                  "El enlace es de Google: no se ha podido ver la web de la tienda."))
+        return {**shopcheck.verdict(sig), "domain": None}
+    return shopcheck.quick_check(url, o.get("store_name"), o.get("price"), ref,
+                                 extra=(o.get("verification") or {}).get("shop_signals"))
 
 
 def assess(offers: list[dict[str, Any]], ref: float | None = None) -> None:
@@ -183,7 +210,8 @@ def assess(offers: list[dict[str, Any]], ref: float | None = None) -> None:
             o["marketplace"] = True
             w.append("Vendedor externo (marketplace): revisa quién vende y la garantía")
         o["suspicious"] = bool(median and o["condition"] == "new" and o["price"] < 0.75 * median)
-        if risk and risk["verdict"] == "scam":
+        strong = risk and any(x["level"] == "danger" or x["id"] in ("price_low", "price_too_low") for x in risk["signals"])
+        if risk and (risk["verdict"] == "scam" or (risk["verdict"] == "doubtful" and strong)):
             o["suspicious"] = True
         elif o["suspicious"]:
             score -= 30
