@@ -23,12 +23,16 @@ from .. import settings as settings_mod
 from .. import storage
 from ..pricing import live
 from ..pricing.core import price_offer
-from . import chollometro, idealo, serpapi, stores
+from . import chollometro, idealo, serpapi, stores, verify
 from .base import condition_of, is_bundle, matcher, new_client, price_band, resolve_store
 
 PROVIDERS = [
     {"id": "serpapi", "name": "Google Shopping (SerpApi)", "needs_key": True, "beta": False,
      "desc": "Precios de casi todas las tiendas españolas con enlace. La fuente más fiable; requiere API key gratuita."},
+    {"id": "serpapi_amazon", "name": "Amazon.es (SerpApi)", "needs_key": True, "beta": False,
+     "desc": "Resultados de Amazon.es con la misma API key (gasta una búsqueda más del plan)."},
+    {"id": "serpapi_ebay", "name": "eBay.es (SerpApi)", "needs_key": True, "beta": False,
+     "desc": "eBay España: mucho vendedor particular/reacondicionado. Misma API key."},
     {"id": "chollometro", "name": "Chollometro", "needs_key": False, "beta": True,
      "desc": "Chollos de la comunidad (incluye códigos promocionales)."},
     {"id": "idealo", "name": "Idealo", "needs_key": False, "beta": True,
@@ -109,11 +113,15 @@ async def collect(product: dict[str, Any], cfg: dict[str, Any], snapshot_dir: Pa
         if hooks:
             client.event_hooks = hooks
         tasks = []
-        if "serpapi" in enabled:
-            if cfg.get("serpapi_key"):
-                tasks.append(_timed("serpapi", serpapi.search(client, query, cfg["serpapi_key"])))
-            else:
-                status["serpapi"] = {"ok": False, "raw": 0, "error": "Falta la API key (Ajustes)", "skipped": True}
+        if "serpapi" in enabled and cfg.get("serpapi_key"):
+            tasks.append(_timed("serpapi", serpapi.search(client, query, cfg["serpapi_key"])))
+        for pid, fn in (("serpapi_amazon", serpapi.search_amazon), ("serpapi_ebay", serpapi.search_ebay)):
+            if pid in enabled and cfg.get("serpapi_key"):
+                tasks.append(_timed(pid, fn(client, query, cfg["serpapi_key"])))
+        if not cfg.get("serpapi_key"):
+            for pid in ("serpapi", "serpapi_amazon", "serpapi_ebay"):
+                if pid in enabled:
+                    status[pid] = {"ok": False, "raw": 0, "error": "Falta la API key (Ajustes)", "skipped": True}
         if "chollometro" in enabled:
             tasks.append(_timed("chollometro", chollometro.search(client, query)))
         if "idealo" in enabled:
@@ -166,8 +174,12 @@ def _price_all(product: dict[str, Any], category: str, accepted: list[dict[str, 
     prod = {**product, "category": category}
     sb, promos = stores_by_id(), user_promos()
     priced = [price_offer({**a, "product_id": product["id"]}, prod, sb, promos) for a in accepted]
-    priced.sort(key=lambda o: (o.get("in_stock") is False, o["condition"] == "used", o["final_price"]))
+    priced.sort(key=sort_key)
     return priced
+
+
+def sort_key(o: dict[str, Any]) -> tuple:
+    return (o.get("in_stock") is False, o["condition"] == "used", bool(o.get("suspicious")), o["final_price"])
 
 
 def save(product_id: str, priced: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -200,7 +212,10 @@ def save(product_id: str, priced: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "store_name": o["store_name"], "price": o["price"], "shipping": o.get("shipping"),
                     "url": o["url"], "in_stock": o.get("in_stock") is not False, "condition": o["condition"],
                     "title": o.get("title"), "code": o.get("code"), "deal_url": o.get("deal_url"),
-                    "source": f"auto:{o['provider']}", "checked_at": now})
+                    "source": f"auto:{o['provider']}", "checked_at": now,
+                    "verified": (o.get("verification") or {}).get("status"), "confidence": o.get("confidence"),
+                    "warnings": o.get("warnings", []), "seen_in": o.get("seen_in", []),
+                    "suspicious": o.get("suspicious", False), "bundle": o.get("bundle", False)})
     storage.write_user("offers", kept + new)
     hist = storage.read_user("price_history", [])
     for o in best.values():
@@ -222,12 +237,31 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
     cfg = settings_mod.get()
     listings, status = await collect(product, cfg, snapshot_dir, only)
     accepted, rejected = filter_listings(product, category, listings, status)
-    priced = _price_all(product, category, accepted)
+    merged = verify.merge_duplicates(accepted)
+    merged.sort(key=lambda o: (o["condition"] == "used", o["price"]))
+    if cfg.get("verify_top", 0) > 0 and merged:
+        async with new_client(timeout=12) as client:
+            await verify.verify_top(client, merged, int(cfg["verify_top"]))
+    priced = _price_all(product, category, merged)
+    verify.assess(priced)
+    priced.sort(key=sort_key)
     if not dry_run:
         save(product_id, priced)
     target = cfg.get("targets", {}).get(product_id)
-    best_new = next((o for o in priced if o["condition"] == "new" and o.get("in_stock") is not False), None)
+    new_ok = [o for o in priced if o["condition"] == "new" and o.get("in_stock") is not False]
+    best_new = next((o for o in new_ok if not o["suspicious"]), None)
+    cheapest = min(new_ok, key=lambda o: o["final_price"], default=None)
+    ok_sources = [k for k, v in status.items() if v.get("ok")]
+    coverage = {
+        "sources_ok": len(ok_sources), "sources_total": len(status),
+        "sources": ok_sources,
+        "stores": len({o["store"] for o in new_ok}),
+        "verified": sum(1 for o in priced if (o.get("verification") or {}).get("status") == "verified"),
+        "level": "alta" if len(ok_sources) >= 3 and len(new_ok) >= 4 else "media" if new_ok and len(ok_sources) >= 2 else "baja",
+    }
     result = {
+        "coverage": coverage,
+        "cheapest_suspicious": cheapest if cheapest and cheapest is not best_new and cheapest["suspicious"] else None,
         "product_id": product_id, "query": product["search_query"],
         "searched_at": datetime.now().isoformat(timespec="seconds"),
         "listings": priced, "rejected": rejected[:40], "rejected_count": len(rejected),

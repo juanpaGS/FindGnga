@@ -44,18 +44,18 @@ def test_best_price_falls_back_to_reference():
 
 
 def test_extract_price_jsonld():
-    d = extract_price((FIX / "product_jsonld.html").read_text())
+    d = extract_price((FIX / "product_jsonld.html").read_text(encoding="utf-8"))
     assert d["price"] == 329.9 and d["in_stock"] is True and d["method"] == "json-ld"
     assert d["title"] == "LG 27UP850N-W"
 
 
 def test_extract_price_meta_fallback():
-    d = extract_price((FIX / "product_meta.html").read_text())
+    d = extract_price((FIX / "product_meta.html").read_text(encoding="utf-8"))
     assert d["price"] == 1049.95 and d["method"].startswith("meta")
 
 
 def test_parse_feed_and_filter():
-    items = parse_feed((FIX / "feed.xml").read_text())
+    items = parse_feed((FIX / "feed.xml").read_text(encoding="utf-8"))
     assert len(items) == 3
     ps5 = items[0]
     assert ps5["price"] == 449.0 and ps5["merchant"] == "MediaMarkt" and ps5["code"] == "BLACK25"

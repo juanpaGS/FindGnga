@@ -11,6 +11,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import backup as backup_mod
+from . import doctor as doctor_mod
 from . import predict as predict_mod
 from . import search, storage
 from . import settings as settings_mod
@@ -212,6 +214,7 @@ class SettingsIn(BaseModel):
     providers: dict[str, bool] | None = None
     max_offer_age_days: float | None = Field(None, gt=0, le=60)
     include_used: bool | None = None
+    verify_top: int | None = Field(None, ge=0, le=20)
 
 
 class TargetIn(BaseModel):
@@ -273,6 +276,27 @@ def api_predict(product_id: str, saved: float = 0.0) -> dict[str, Any]:
     history = [h for h in storage.read_user("price_history", []) if h["product_id"] == product_id]
     current = None if pricing["estimated"] else pricing["final_price"]
     return predict_mod.predict(product, category, current, history, saved=saved)
+
+
+@app.get("/api/doctor")
+async def api_doctor(network: bool = True) -> dict[str, Any]:
+    """Comprueba que la instalación y las fuentes funcionan en este ordenador."""
+    return await doctor_mod.run(network)
+
+
+@app.get("/api/backup")
+def api_backup(include_key: bool = False) -> dict[str, Any]:
+    return backup_mod.export(include_key)
+
+
+@app.post("/api/backup")
+def api_restore(payload: dict[str, Any]) -> dict[str, Any]:
+    try:
+        restored = backup_mod.restore(payload)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    engine._cache.clear()
+    return {"restored": restored}
 
 
 @app.get("/api/calendar")

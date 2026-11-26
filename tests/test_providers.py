@@ -14,7 +14,7 @@ def product(pid):
 
 
 def test_generic_extractor_reads_jsonld_and_next_data():
-    items = extract_listings((FIX / "store_search.html").read_text(), "https://tienda.example/buscar")
+    items = extract_listings((FIX / "store_search.html").read_text(encoding="utf-8"), "https://tienda.example/buscar")
     titles = {i["title"]: i for i in items}
     assert titles["Sony PlayStation 5 Slim Digital Edition 1TB"]["price"] == 449.0
     assert titles["Sony PlayStation 5 Slim Digital Edition 1TB"]["url"] == "https://tienda.example/sony-ps5-slim-digital"
@@ -64,7 +64,7 @@ def test_serpapi_parse():
 
 
 def test_chollometro_parse_skips_expired_and_free():
-    items = chollometro.parse_search((FIX / "chollometro_search.html").read_text())
+    items = chollometro.parse_search((FIX / "chollometro_search.html").read_text(encoding="utf-8"))
     assert len(items) == 1
     it = items[0]
     assert it["price"] == 429.99 and it["store_name"] == "MediaMarkt" and it["code"] == "BLACKPS5"
@@ -88,6 +88,7 @@ def test_live_search_filters_prices_and_saves(monkeypatch):
         return [dict(r) for r in raw], {"serpapi": {"ok": True, "raw": 4}, "stores": {"ok": True, "raw": 1}}
 
     monkeypatch.setattr(engine, "collect", fake_collect)
+    storage.write_user("settings", {"verify_top": 0})
     r = asyncio.run(engine.live_search("ps5-slim-digital", force=True))
     assert r["best"]["store"] == "mediamarkt" and r["best"]["final_price"] == 449.0
     assert r["rejected_count"] == 2
@@ -96,6 +97,7 @@ def test_live_search_filters_prices_and_saves(monkeypatch):
     offers = storage.read_user("offers", [])
     assert {o["store"] for o in offers} == {"mediamarkt", "amazon", "worten"}
     assert all(o["source"] == "auto:serpapi" for o in offers)
+    assert r["coverage"]["stores"] == 2 and r["coverage"]["sources_ok"] == 2
     # Una segunda búsqueda sin Amazon hace desaparecer la oferta de Amazon (agotada / retirada)
     raw.pop(1)
     asyncio.run(engine.live_search("ps5-slim-digital", force=True))

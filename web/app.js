@@ -255,7 +255,7 @@ function sourceLabel(src) {
   if (src.startsWith("auto:")) return "🤖 " + (PROVIDER_NAMES[src.slice(5)] || src.slice(5));
   return SOURCE_LABEL[src] || src;
 }
-const PROVIDER_NAMES = { serpapi: "Google Shopping", chollometro: "Chollometro", idealo: "Idealo", stores: "tienda", watched: "URL vigilada" };
+const PROVIDER_NAMES = { serpapi: "Google Shopping", serpapi_amazon: "Amazon.es", serpapi_ebay: "eBay", chollometro: "Chollometro", idealo: "Idealo", stores: "tienda", watched: "URL vigilada" };
 function ago(iso) {
   if (!iso) return "";
   const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -269,8 +269,9 @@ function priceBlock(pricing) {
   const target = pricing.target ? `<div class="small muted">🔔 Objetivo: ${eur(pricing.target)}</div>` : "";
   if (pricing.estimated) {
     const stale = pricing.stale?.length ? `<div class="small muted">${pricing.stale.length} precio(s) caducado(s) o sin stock</div>` : "";
-    return `<div class="price"><div class="final">${eur(pricing.final_price)}</div>
-      <span class="badge b-est">Precio orientativo · pulsa 🔎 Buscar precio ahora</span>${stale}${target}</div>`;
+    return `<div class="price"><div class="final muted-price">${eur(pricing.final_price)}</div>
+      <span class="badge b-est">⚠️ No es un precio encontrado</span>
+      <div class="small muted" style="max-width:240px">Es el precio de referencia${state.catalog?.consoles?.some((c) => c.ref_price === pricing.final_price) ? " (PVP oficial)" : ""}. Pulsa 🔎 Buscar precio ahora para ver el mercado real.</div>${stale}${target}</div>`;
   }
   const b = pricing.best;
   const extra = [b.shipping_cost ? `+ ${eur(b.shipping_cost)} envío` : "envío gratis",
@@ -280,7 +281,7 @@ function priceBlock(pricing) {
   return `<div class="price">${pricing.alert ? `<span class="badge b-rec">🔔 ¡Por debajo de tu objetivo!</span>` : ""}
     <div class="final">${eur(pricing.final_price)}</div>
     <div class="small">en <b>${esc(b.store_name)}</b> (${eur(b.price)} ${extra})</div>
-    <span class="badge b-live">${sourceLabel(b.source)} · ${ago(b.checked_at)}</span>${hist}${target}
+    <span class="badge b-live">${sourceLabel(b.source)} · ${ago(b.checked_at)}</span>${verifBadge(b)}${confBadge(b)}${hist}${target}
     ${b.url ? `<div><a class="go" href="${esc(b.url)}" target="_blank" rel="noopener">Ir a la tienda ↗</a></div>` : ""}</div>`;
 }
 
@@ -288,7 +289,7 @@ function offersTable(pricing) {
   if (!pricing.offers.length) return `<p class="muted small">Sin precios vigentes. Pulsa 🔎 Buscar precio ahora.</p>`;
   return `<div class="scroll-x"><table><tr><th>Tienda</th><th class="num">Precio</th><th class="num">Envío</th><th class="num">Cupón</th><th class="num">Total</th><th>Fuente</th><th></th></tr>
     ${pricing.offers.map((o) => `<tr><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.store_name)} ↗</a>` : esc(o.store_name)}
-        ${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}</td>
+        ${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}${verifBadge(o)}${(o.warnings || []).length ? ` <span title="${esc(o.warnings.join(" · "))}">⚠️</span>` : ""}</td>
       <td class="num">${eur(o.price)}</td><td class="num">${eur(o.shipping_cost)}</td>
       <td class="num">${o.promo_code ? `−${eur(o.promo_discount)}` : "—"}</td><td class="num"><b>${eur(o.final_price)}</b></td>
       <td class="small muted">${sourceLabel(o.source)} · ${ago(o.checked_at)}</td>
@@ -328,23 +329,54 @@ function providerLine(providers) {
   }).join("");
 }
 
+const VERIF = {
+  verified: ["✔ verificado en la tienda", "b-live"], price_changed: ["⚠ precio actualizado en la tienda", "b-cheap"],
+  out_of_stock: ["Agotado en la tienda", "b-est"], unverifiable: ["sin verificar", "b-est"],
+};
+
+function verifBadge(o) {
+  const st = o.verification?.status || o.verified;
+  if (!st) return "";
+  const [label, cls] = VERIF[st] || VERIF.unverifiable;
+  return `<span class="badge ${cls}" title="${esc(o.verification?.note || "")}">${label}</span>`;
+}
+
+function confBadge(o) {
+  if (o.confidence == null) return "";
+  const c = o.confidence, cls = c >= 70 ? "b-live" : c >= 45 ? "b-cheap" : "b-est";
+  return `<span class="badge ${cls}" title="Fiabilidad de la oferta: verificación, nº de fuentes, tienda conocida">fiabilidad ${c}</span>`;
+}
+
+function coverageLine(cv) {
+  if (!cv) return "";
+  const lvl = { alta: "v-good", media: "v-meh", baja: "v-bad" }[cv.level] || "";
+  return `<div class="small">Cobertura <b class="${lvl}">${cv.level}</b>: ${cv.sources_ok}/${cv.sources_total} fuentes respondieron ·
+    ${cv.stores} ${cv.stores === 1 ? "tienda" : "tiendas"} con stock · ${cv.verified} ${cv.verified === 1 ? "oferta verificada" : "ofertas verificadas"} en la propia tienda
+    ${cv.level === "baja" ? ` — <b>puede haber precios más bajos que no vemos</b>; activa más fuentes en <a href="#settings" data-go="settings">Ajustes</a>.` : ""}</div>`;
+}
+
 function renderLive(r) {
-  if (r.loading) return `<div class="live"><span class="muted">🔎 Buscando en todas las fuentes…</span></div>`;
+  if (r.loading) return `<div class="live"><span class="muted">🔎 Buscando en todas las fuentes y verificando en las tiendas…</span></div>`;
   if (r.error) return `<div class="live"><span class="error">${esc(r.error)}</span></div>`;
-  const rows = r.listings.slice(0, 12);
+  const rows = r.listings.slice(0, 15);
+  const sus = r.cheapest_suspicious;
   return `<div class="live">
     <div class="live-head"><b>Ofertas encontradas ${ago(r.searched_at)}</b>${r.cached ? ` <span class="muted small">(caché)</span>` : ""}
       <span class="muted small">· ${r.listings.length} válidas, ${r.rejected_count} descartadas (accesorios, otros modelos, precios raros)</span></div>
+    ${coverageLine(r.coverage)}
     <div class="pvs">${providerLine(r.providers)}</div>
+    ${sus ? `<div class="notice">🕵️ La oferta más barata (${eur(sus.final_price)} en ${esc(sus.store_name)}) parece sospechosa y no la usamos como mejor precio: ${esc((sus.warnings || []).join(" · "))}</div>` : ""}
     ${rows.length ? `<div class="scroll-x"><table><tr><th>Tienda</th><th>Producto</th><th class="num">Total</th><th></th></tr>
-      ${rows.map((o) => `<tr class="${o.in_stock === false ? "dim" : ""}"><td><b>${esc(o.store_name)}</b></td>
+      ${rows.map((o) => `<tr class="${o.in_stock === false ? "dim" : ""} ${o.suspicious ? "sus" : ""}"><td><b>${esc(o.store_name)}</b><div>${confBadge(o)}</div></td>
         <td class="small">${esc(o.title)}
           ${o.condition === "used" ? `<span class="badge b-est">Usado/reacond.</span>` : ""}${o.bundle ? `<span class="badge b-q">Pack</span>` : ""}
-          ${o.in_stock === false ? `<span class="badge b-est">Sin stock</span>` : ""}${o.code ? ` código <span class="code">${esc(o.code)}</span>` : ""}
-          <div class="muted">${eur(o.price)} ${o.shipping_cost ? "+ " + eur(o.shipping_cost) + " envío" : "· envío gratis*"}${o.promo_code ? " − cupón " + esc(o.promo_code) : ""} · vía ${PROVIDER_NAMES[o.provider] || o.provider}</div></td>
+          ${verifBadge(o)}${o.code ? ` código <span class="code">${esc(o.code)}</span>` : ""}
+          <div class="muted">${eur(o.price)} ${o.shipping_cost ? "+ " + eur(o.shipping_cost) + " envío" : "· envío gratis*"}${o.promo_code ? " − cupón " + esc(o.promo_code) : ""}
+            · vía ${(o.seen_in?.length ? o.seen_in : [o.provider]).map((x) => PROVIDER_NAMES[x] || x).join(", ")}</div>
+          ${(o.warnings || []).map((w) => `<div class="warnline">⚠️ ${esc(w)}</div>`).join("")}</td>
         <td class="num"><b>${eur(o.final_price)}</b></td>
         <td><a class="go" href="${esc(o.url)}" target="_blank" rel="noopener">Ir ↗</a></td></tr>`).join("")}</table></div>
-      <p class="muted small">* Envío estimado con las reglas de la tienda cuando la fuente no lo indica. Confirma en el carrito.</p>`
+      <p class="muted small">* Envío estimado con las reglas de la tienda cuando la fuente no lo indica. Confirma siempre el total en el carrito.</p>`
     : `<p class="muted">No se encontraron ofertas válidas. ${Object.values(r.providers).every((s) => !s.ok) ? "Ninguna fuente respondió: revisa <a href=\"#settings\" data-go=\"settings\">Ajustes → Diagnóstico</a>." : "Prueba más tarde o usa los enlaces de tiendas."}</p>`}
   </div>`;
 }
@@ -663,10 +695,48 @@ async function viewSettings() {
       <div class="row" style="margin-top:10px">
         <label>Los precios caducan a los <input type="number" id="age" min="1" max="60" value="${st.max_offer_age_days}" style="width:80px;display:inline-block"> días</label>
         <label><input type="checkbox" id="used" ${st.include_used ? "checked" : ""}> Contar reacondicionados/segunda mano en el mejor precio</label>
+        <label>Verificar en la propia tienda las <input type="number" id="vtop" min="0" max="20" value="${st.verify_top ?? 6}" style="width:70px;display:inline-block"> ofertas más baratas (0 = no)</label>
       </div><p class="error" id="serr"></p></div>
     <div class="panel" style="margin-top:12px"><h3>🩺 Diagnóstico</h3>
       <p class="small muted">Prueba cada fuente con «PS5 Slim Digital» sin guardar nada y guarda el HTML recibido en <code>data/user/snapshots/</code> para poder afinar los lectores.</p>
-      <button class="secondary" id="diag">Ejecutar diagnóstico</button><div id="diagOut"></div></div>`;
+      <button class="secondary" id="diag">Ejecutar diagnóstico</button><div id="diagOut"></div></div>
+    <div class="panel" style="margin-top:12px"><h3>💻 ¿Funciona en este ordenador?</h3>
+      <p class="small muted">Revisa Python, dependencias, carpeta de datos, conexión con cada fuente y tu API key.</p>
+      <button class="secondary" id="doctor">Comprobar instalación</button><div id="docOut"></div></div>
+    <div class="panel" style="margin-top:12px"><h3>📦 Llevar mis datos a otro ordenador</h3>
+      <p class="small muted">Tu perfil, ajustes, precios, histórico y cupones viven en <code>data/user/</code>, que no se sube a GitHub. Descarga una copia y restáurala en el otro ordenador.</p>
+      <div class="actions" style="justify-content:flex-start">
+        <label class="small"><input type="checkbox" id="withKey"> incluir API key</label>
+        <button class="secondary" id="export">⬇️ Descargar copia</button>
+        <label class="secondary-btn">⬆️ Restaurar copia<input type="file" id="import" accept="application/json" hidden></label>
+      </div><p class="small" id="bkOut"></p></div>`;
+  $("#vtop").onchange = (e) => save({ verify_top: Math.max(0, Math.min(20, +e.target.value || 0)) });
+  $("#doctor").onclick = async (e) => {
+    e.target.disabled = true; $("#docOut").innerHTML = `<p class="muted">Comprobando…</p>`;
+    try {
+      const r = await api("/api/doctor");
+      const ic = { ok: "✅", warn: "⚠️", error: "❌" };
+      $("#docOut").innerHTML = `<p><b>${esc(r.summary)}</b></p><ul class="reasons">${r.checks.map((c) =>
+        `<li style="padding-left:0">${ic[c.status]} <b>${esc(c.name)}</b>: ${esc(c.detail)}${c.fix ? `<div class="small muted">→ ${esc(c.fix)}</div>` : ""}</li>`).join("")}</ul>`;
+    } catch (err) { $("#docOut").innerHTML = `<p class="error">${esc(err.message)}</p>`; }
+    e.target.disabled = false;
+  };
+  $("#export").onclick = async () => {
+    const data = await api(`/api/backup?include_key=${$("#withKey").checked}`);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    a.download = `findgnga-copia-${data.exported_at.slice(0, 10)}.json`;
+    a.click(); URL.revokeObjectURL(a.href);
+    $("#bkOut").textContent = "Copia descargada" + ($("#withKey").checked ? " (incluye tu API key: guárdala en sitio seguro)" : "") + ".";
+  };
+  $("#import").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const r = await api("/api/backup", { method: "POST", body: JSON.parse(await f.text()) });
+      $("#bkOut").textContent = "Restaurado: " + r.restored.join(", ") + ". Recargando…";
+      setTimeout(() => location.reload(), 800);
+    } catch (err) { $("#bkOut").textContent = "Error: " + err.message; }
+  };
   const save = async (body) => {
     try { state.settings = await api("/api/settings", { method: "PUT", body }); state.live = {}; }
     catch (e) { $("#serr").textContent = e.message; }

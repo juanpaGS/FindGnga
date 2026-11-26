@@ -36,6 +36,7 @@ para lo que tú ya tienes en casa**.
    | Fuente | Clave | Estado |
    |---|---|---|
    | Google Shopping vía [SerpApi](https://serpapi.com) | API key gratuita | la más fiable y completa |
+   | Amazon.es y eBay.es vía SerpApi | la misma key | estable (eBay desactivado por defecto) |
    | Chollometro (chollos + códigos) | no | beta |
    | Idealo | no | beta (puede bloquear) |
    | Tiendas directamente (Amazon, PcComponentes, MediaMarkt…) | no | beta (lee datos estructurados) |
@@ -65,13 +66,52 @@ para lo que tú ya tienes en casa**.
 > como "sin comprobar". El programa no inventa precios ni códigos: los reales
 > entran al comprobarlos en vivo o al añadirlos.
 
-## Arrancar
+## Instalar y arrancar (en cualquier ordenador)
+
+Sólo necesitas **Python 3.10 o superior** e internet.
+
+**macOS / Linux**
 
 ```bash
+git clone https://github.com/juanpaGS/FindGnga.git
+cd FindGnga
 ./run.sh
 ```
 
-y abre <http://127.0.0.1:8000>. Requiere Python 3.10+.
+**Windows**: instala Python desde python.org (marca *Add to PATH*), clona o
+descarga el repositorio y haz doble clic en `run.bat`.
+
+La primera vez crea su entorno (`.venv`) e instala las dependencias solo; luego
+abre <http://127.0.0.1:8000>. Probado con un clon limpio en Python 3.11, 3.12 y
+3.13, y GitHub Actions lo prueba en Linux, macOS y Windows (3.10 y 3.13).
+
+**Qué NO viaja con el repositorio** (a propósito, es personal): tu perfil,
+API key, precios, histórico y cupones (`data/user/`). Para llevarlos:
+*⚙️ Ajustes → Descargar copia* en un ordenador y *Restaurar copia* en el otro
+(o `python -m findgnga.cli export copia.json` / `import copia.json`).
+
+**¿Funciona aquí?** *⚙️ Ajustes → Comprobar instalación* o:
+
+```bash
+.venv/bin/python -m findgnga.cli doctor
+```
+
+revisa Python, dependencias, datos, conexión con cada fuente y la API key, y
+dice cómo arreglar lo que falle.
+
+## ¿El precio que veo es el más barato del mercado?
+
+- Si pone **"⚠️ No es un precio encontrado"**, es el precio de referencia
+  (en PS5, el PVP oficial 599,99/649,99/899,99 €), **no** una oferta real:
+  pulsa *🔎 Buscar precio ahora*.
+- Tras buscar, la línea **Cobertura** te dice cuántas fuentes respondieron y
+  cuántas tiendas se compararon. Con cobertura baja puede haber precios más
+  bajos que no vemos; con SerpApi (Google Shopping + Amazon) la cobertura es
+  parecida a la de un comparador.
+- Cada oferta lleva **fiabilidad** (0-100): se **verifica en la página de la
+  propia tienda** (precio y stock reales), suma si varias fuentes la ven igual y
+  resta si la tienda es desconocida, es un marketplace o el precio es
+  sospechosamente bajo respecto al resto (no se usa como "mejor precio").
 
 ### Activar Google Shopping (recomendado)
 
@@ -123,7 +163,10 @@ findgnga/
                        chollometro, idealo, stores, extract (JSON-LD / JSON incrustado)
   predict.py           predicción de bajadas y plan de ahorro
   settings.py          ajustes (API key, fuentes, caducidad, alertas)
-  cli.py               refresh / diagnose
+  providers/verify.py  verificación en la tienda, fiabilidad, duplicados
+  doctor.py            comprobación de la instalación
+  backup.py            copia de seguridad / restauración de data/user
+  cli.py               refresh / diagnose / doctor / export / import
   storage.py           ficheros JSON
 data/
   monitors.json        catálogo de monitores (fichas editables)

@@ -3,6 +3,9 @@
     python -m findgnga.cli refresh            # busca precios de PS5 + tus monitores top y avisa de alertas
     python -m findgnga.cli refresh ps5-pro    # sólo esos productos
     python -m findgnga.cli diagnose           # prueba cada fuente y guarda el HTML en data/user/snapshots
+    python -m findgnga.cli doctor             # ¿funciona la instalación en este ordenador?
+    python -m findgnga.cli export copia.json  # copia de seguridad de tus datos (añade --with-key para incluir la API key)
+    python -m findgnga.cli import copia.json  # restaurar en otro ordenador
 
 Para tenerlo vigilado, prográmalo (p. ej. con cron cada 6 h):
     0 */6 * * * cd /ruta/FindGnga && .venv/bin/python -m findgnga.cli refresh >> data/user/refresh.log 2>&1
@@ -60,10 +63,36 @@ async def diagnose(pid: str) -> None:
     print(f"\nHTML guardado en {folder} (compártelo si quieres afinar un lector).")
 
 
+async def doctor() -> int:
+    from . import doctor as doc
+    r = await doc.run()
+    icons = {"ok": "✅", "warn": "⚠️ ", "error": "❌"}
+    for c in r["checks"]:
+        print(f"{icons[c['status']]} {c['name']:42} {c['detail']}")
+        if c["fix"]:
+            print(f"     → {c['fix']}")
+    print(f"\n{r['summary']}")
+    return 1 if r["errors"] else 0
+
+
 def main(argv: list[str]) -> None:
     cmd = argv[0] if argv else "refresh"
     if cmd == "refresh":
         asyncio.run(refresh(argv[1:] or _default_products()))
+    elif cmd == "doctor":
+        sys.exit(asyncio.run(doctor()))
+    elif cmd == "export" and len(argv) > 1:
+        import json
+        from . import backup
+        data = backup.export(include_key="--with-key" in argv)
+        with open(argv[1], "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        print(f"Copia guardada en {argv[1]} ({', '.join(data['data'])})")
+    elif cmd == "import" and len(argv) > 1:
+        import json
+        from . import backup
+        with open(argv[1], encoding="utf-8") as fh:
+            print("Restaurado:", ", ".join(backup.restore(json.load(fh))))
     elif cmd == "diagnose":
         asyncio.run(diagnose(argv[1] if len(argv) > 1 else "ps5-slim-digital"))
     else:

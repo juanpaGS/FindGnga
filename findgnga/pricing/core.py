@@ -102,7 +102,7 @@ def best_price(product: dict[str, Any], offers: list[dict[str, Any]], stores: di
         ok = (o.get("in_stock", True) is not False and is_fresh(o, max_age_days)
               and (include_used or o.get("condition", "new") != "used"))
         (valid if ok else stale).append(price_offer(o, product, stores, promos, today))
-    valid.sort(key=lambda o: o["final_price"])
+    valid.sort(key=lambda o: (bool(o.get("suspicious")), o["final_price"]))
     if valid:
         best = valid[0]
         return {"final_price": best["final_price"], "estimated": False, "best": best, "offers": valid, "stale": stale}

@@ -141,3 +141,10 @@ label.src { display: block; padding: 8px 0; border-bottom: 1px solid var(--borde
 @media (max-width: 600px) {
   .tl-row { grid-template-columns: 1fr; gap: 2px; } .tl-val { text-align: left; }
 }
+
+/* v0.3: verificación y fiabilidad */
+tr.sus td { background: var(--bad-soft); }
+.warnline { color: var(--warn); font-size: 12px; margin-top: 2px; }
+.muted-price { color: var(--muted); }
+.v-bad { color: var(--bad); }
+label.secondary-btn { border-radius: 10px; padding: 10px 16px; cursor: pointer; background: var(--surface-2); border: 1px solid var(--border); }

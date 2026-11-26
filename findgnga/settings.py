@@ -9,7 +9,9 @@ from . import storage
 
 DEFAULTS: dict[str, Any] = {
     "serpapi_key": "",
-    "providers": {"serpapi": True, "chollometro": True, "idealo": True, "stores": True, "watched": True},
+    "providers": {"serpapi": True, "serpapi_amazon": True, "serpapi_ebay": False, "chollometro": True,
+                  "idealo": True, "stores": True, "watched": True},
+    "verify_top": 6,  # ofertas más baratas que se comprueban en la propia tienda (0 = no verificar)
     "max_offer_age_days": 3,
     "include_used": False,
     "targets": {},  # product_id -> precio objetivo (alerta)
