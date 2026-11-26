@@ -1,0 +1,203 @@
+{
+  "_info": "Catálogo semilla de monitores. Las fichas están escritas a mano: verifica en la web del fabricante antes de comprar. ref_price es un precio ORIENTATIVO de calle (no verificado hoy); el programa lo sustituye por precios reales cuando compruebas una oferta en vivo o la añades a mano.",
+  "items": [
+    {
+      "id": "samsung-viewfinity-s9",
+      "brand": "Samsung", "model": "ViewFinity S9 (S90PC)", "size_in": 27, "res_w": 5120, "res_h": 2880,
+      "panel": "ips", "refresh_hz": 60, "hdr": "hdr600", "dci_p3": 99, "brightness_nits": 600,
+      "usb_c_video": true, "usb_c_pd_w": 90, "thunderbolt": true, "hdmi_21": 0, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": false, "speakers": true, "audio_out": false, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 899, "search_query": "Samsung ViewFinity S9 5K",
+      "notes": "5K 27\" (218 ppi): la nitidez 'Retina' de macOS. Sin HDMI: no vale para PS5."
+    },
+    {
+      "id": "asus-proart-pa27jcv",
+      "brand": "ASUS", "model": "ProArt PA27JCV", "size_in": 27, "res_w": 5120, "res_h": 2880,
+      "panel": "ips", "refresh_hz": 60, "hdr": "hdr500", "dci_p3": 99, "brightness_nits": 500,
+      "usb_c_video": true, "usb_c_pd_w": 96, "thunderbolt": false, "hdmi_21": 1, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": false, "speakers": true, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 799, "search_query": "ASUS ProArt PA27JCV 5K",
+      "notes": "5K por USB-C 96 W. Calibrado de fábrica. A 60 Hz: la PS5 funcionará pero sin 120 Hz."
+    },
+    {
+      "id": "apple-studio-display",
+      "brand": "Apple", "model": "Studio Display", "size_in": 27, "res_w": 5120, "res_h": 2880,
+      "panel": "ips", "refresh_hz": 60, "hdr": "none", "dci_p3": 100, "brightness_nits": 600,
+      "usb_c_video": true, "usb_c_pd_w": 96, "thunderbolt": true, "hdmi_21": 0, "hdmi_20": 0, "displayport": false,
+      "vrr_hdmi": false, "speakers": true, "audio_out": false, "height_adjust": false, "kvm": false, "aspect": "16:9",
+      "ref_price": 1759, "search_query": "Apple Studio Display",
+      "notes": "Integración perfecta con macOS (brillo, cámara, altavoces). Muy caro y sin HDMI. La base estándar no regula altura."
+    },
+    {
+      "id": "dell-u2723qe",
+      "brand": "Dell", "model": "UltraSharp U2723QE", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips_black", "refresh_hz": 60, "hdr": "hdr400", "dci_p3": 98, "brightness_nits": 400,
+      "usb_c_video": true, "usb_c_pd_w": 90, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 1, "displayport": true,
+      "vrr_hdmi": false, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": true, "aspect": "16:9",
+      "ref_price": 560, "search_query": "Dell UltraSharp U2723QE",
+      "notes": "Hub USB-C completo (Ethernet, USB) y KVM. Panel IPS Black con muy buen contraste para ser IPS."
+    },
+    {
+      "id": "lg-27up850n",
+      "brand": "LG", "model": "27UP850N-W", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 60, "hdr": "hdr400", "dci_p3": 95, "brightness_nits": 400,
+      "usb_c_video": true, "usb_c_pd_w": 96, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 2, "displayport": true,
+      "vrr_hdmi": false, "speakers": true, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 380, "search_query": "LG 27UP850N",
+      "notes": "Clásico calidad/precio para Mac: 4K + USB-C 96 W."
+    },
+    {
+      "id": "asus-proart-pa279crv",
+      "brand": "ASUS", "model": "ProArt PA279CRV", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 60, "hdr": "hdr400", "dci_p3": 99, "brightness_nits": 400,
+      "usb_c_video": true, "usb_c_pd_w": 96, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 2, "displayport": true,
+      "vrr_hdmi": false, "speakers": true, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 430, "search_query": "ASUS ProArt PA279CRV",
+      "notes": "Muy buena cobertura de color y calibración de fábrica a buen precio."
+    },
+    {
+      "id": "benq-ma270u",
+      "brand": "BenQ", "model": "MA270U", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 60, "hdr": "hdr400", "dci_p3": 95, "brightness_nits": 400,
+      "usb_c_video": true, "usb_c_pd_w": 90, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 1, "displayport": true,
+      "vrr_hdmi": false, "speakers": true, "audio_out": false, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 549, "search_query": "BenQ MA270U",
+      "notes": "Pensado para Mac: colores ajustados a los de la pantalla del MacBook y control desde macOS."
+    },
+    {
+      "id": "dell-s2722qc",
+      "brand": "Dell", "model": "S2722QC", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 60, "hdr": "none", "dci_p3": 0, "brightness_nits": 350,
+      "usb_c_video": true, "usb_c_pd_w": 65, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 2, "displayport": false,
+      "vrr_hdmi": false, "speakers": true, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 299, "search_query": "Dell S2722QC",
+      "notes": "4K USB-C barato. 65 W carga un MacBook Pro 14\" en uso normal, pero se queda corto con carga alta."
+    },
+    {
+      "id": "lg-27us500",
+      "brand": "LG", "model": "27US500-W", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 60, "hdr": "hdr10", "dci_p3": 0, "brightness_nits": 300,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 2, "displayport": true,
+      "vrr_hdmi": false, "speakers": false, "audio_out": true, "height_adjust": false, "kvm": false, "aspect": "16:9",
+      "ref_price": 199, "search_query": "LG 27US500",
+      "notes": "El 4K más barato decente. Sin USB-C: conectarás el Mac por HDMI y el cargador aparte."
+    },
+    {
+      "id": "dell-u2724de",
+      "brand": "Dell", "model": "UltraSharp U2724DE", "size_in": 27, "res_w": 2560, "res_h": 1440,
+      "panel": "ips_black", "refresh_hz": 120, "hdr": "none", "dci_p3": 98, "brightness_nits": 350,
+      "usb_c_video": true, "usb_c_pd_w": 90, "thunderbolt": true, "hdmi_21": 1, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": false, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": true, "aspect": "16:9",
+      "ref_price": 480, "search_query": "Dell UltraSharp U2724DE",
+      "notes": "Hub Thunderbolt excelente, pero 1440p en 27\" se ve menos nítido en macOS que un 4K/5K."
+    },
+    {
+      "id": "lg-27gr93u",
+      "brand": "LG", "model": "UltraGear 27GR93U", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 144, "hdr": "hdr400", "dci_p3": 90, "brightness_nits": 400,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 399, "search_query": "LG 27GR93U",
+      "notes": "4K 144 Hz con HDMI 2.1: PS5 a 4K 120 Hz con VRR por poco dinero."
+    },
+    {
+      "id": "gigabyte-m27u",
+      "brand": "Gigabyte", "model": "M27U", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 160, "hdr": "hdr400", "dci_p3": 95, "brightness_nits": 400,
+      "usb_c_video": true, "usb_c_pd_w": 18, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": true, "audio_out": true, "height_adjust": true, "kvm": true, "aspect": "16:9",
+      "ref_price": 429, "search_query": "Gigabyte M27U",
+      "notes": "HDMI 2.1 + USB-C con KVM: vale para PS5 y portátil. El USB-C sólo da 18 W (no carga el portátil)."
+    },
+    {
+      "id": "msi-mag-274upf",
+      "brand": "MSI", "model": "MAG 274UPF E2", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 160, "hdr": "hdr400", "dci_p3": 95, "brightness_nits": 400,
+      "usb_c_video": true, "usb_c_pd_w": 15, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 379, "search_query": "MSI MAG 274UPF",
+      "notes": "4K 160 Hz HDMI 2.1 muy competitivo en precio."
+    },
+    {
+      "id": "samsung-odyssey-g70d",
+      "brand": "Samsung", "model": "Odyssey G7 G70D 28\"", "size_in": 28, "res_w": 3840, "res_h": 2160,
+      "panel": "ips", "refresh_hz": 144, "hdr": "hdr400", "dci_p3": 90, "brightness_nits": 400,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 449, "search_query": "Samsung Odyssey G7 G70D 28",
+      "notes": "Incluye Smart TV (apps de streaming) en el propio monitor."
+    },
+    {
+      "id": "innocn-27m2v",
+      "brand": "INNOCN", "model": "27M2V", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "miniled_ips", "refresh_hz": 160, "hdr": "hdr1000", "dci_p3": 99, "brightness_nits": 1000,
+      "usb_c_video": true, "usb_c_pd_w": 90, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": true, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 549, "search_query": "INNOCN 27M2V",
+      "notes": "Mini-LED HDR1000, 4K 160 Hz, HDMI 2.1 y USB-C 90 W: el 'todo en uno' Mac + PS5 más barato. Marca con menos red de SAT en España."
+    },
+    {
+      "id": "ktc-m27p20pro",
+      "brand": "KTC", "model": "M27P20 Pro", "size_in": 27, "res_w": 3840, "res_h": 2160,
+      "panel": "miniled_va", "refresh_hz": 160, "hdr": "hdr1000", "dci_p3": 95, "brightness_nits": 1000,
+      "usb_c_video": true, "usb_c_pd_w": 65, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 449, "search_query": "KTC M27P20 Pro",
+      "notes": "Mini-LED 4K con mucho brillo HDR por poco dinero. Panel VA: algo de estela en escenas oscuras."
+    },
+    {
+      "id": "msi-mpg-321urx",
+      "brand": "MSI", "model": "MPG 321URX QD-OLED", "size_in": 32, "res_w": 3840, "res_h": 2160,
+      "panel": "oled", "refresh_hz": 240, "hdr": "trueblack400", "dci_p3": 99, "brightness_nits": 1000,
+      "usb_c_video": true, "usb_c_pd_w": 90, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": true, "aspect": "16:9",
+      "ref_price": 949, "search_query": "MSI MPG 321URX",
+      "notes": "OLED 4K 240 Hz con USB-C 90 W y KVM: gama alta para Mac + PS5. OLED: evita elementos estáticos muchas horas."
+    },
+    {
+      "id": "samsung-odyssey-oled-g80sd",
+      "brand": "Samsung", "model": "Odyssey OLED G8 G80SD", "size_in": 32, "res_w": 3840, "res_h": 2160,
+      "panel": "oled", "refresh_hz": 240, "hdr": "trueblack400", "dci_p3": 99, "brightness_nits": 1000,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 899, "search_query": "Samsung Odyssey OLED G8 G80SD",
+      "notes": "OLED 4K 240 Hz con capa mate anti-reflejos. Sin USB-C."
+    },
+    {
+      "id": "lg-27gs95qe",
+      "brand": "LG", "model": "UltraGear 27GS95QE", "size_in": 27, "res_w": 2560, "res_h": 1440,
+      "panel": "oled", "refresh_hz": 240, "hdr": "trueblack400", "dci_p3": 98, "brightness_nits": 1000,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 2, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 699, "search_query": "LG 27GS95QE",
+      "notes": "OLED 1440p 240 Hz: la PS5 irá a 1440p 120 Hz, no a 4K."
+    },
+    {
+      "id": "aoc-q27g3xmn",
+      "brand": "AOC", "model": "Q27G3XMN", "size_in": 27, "res_w": 2560, "res_h": 1440,
+      "panel": "miniled_va", "refresh_hz": 180, "hdr": "hdr1000", "dci_p3": 95, "brightness_nits": 1000,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 2, "displayport": true,
+      "vrr_hdmi": false, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 249, "search_query": "AOC Q27G3XMN",
+      "notes": "Mini-LED barato con HDR llamativo. Por HDMI 2.0 la PS5 va a 1440p (120 Hz según firmware) y sin VRR."
+    },
+    {
+      "id": "dell-g2724d",
+      "brand": "Dell", "model": "G2724D", "size_in": 27, "res_w": 2560, "res_h": 1440,
+      "panel": "ips", "refresh_hz": 165, "hdr": "hdr400", "dci_p3": 95, "brightness_nits": 400,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 0, "hdmi_20": 2, "displayport": true,
+      "vrr_hdmi": false, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": false, "aspect": "16:9",
+      "ref_price": 219, "search_query": "Dell G2724D",
+      "notes": "1440p 165 Hz fiable y barato. Para Mac, el texto se verá menos nítido que en 4K."
+    },
+    {
+      "id": "samsung-odyssey-g9-g95c",
+      "brand": "Samsung", "model": "Odyssey G9 G95C 49\"", "size_in": 49, "res_w": 5120, "res_h": 1440,
+      "panel": "va", "refresh_hz": 240, "hdr": "hdr1000", "dci_p3": 95, "brightness_nits": 1000,
+      "usb_c_video": false, "usb_c_pd_w": 0, "thunderbolt": false, "hdmi_21": 1, "hdmi_20": 0, "displayport": true,
+      "vrr_hdmi": true, "speakers": false, "audio_out": true, "height_adjust": true, "kvm": true, "curved": true, "aspect": "32:9",
+      "ref_price": 799, "search_query": "Samsung Odyssey G9 G95C",
+      "notes": "Superpanorámico 32:9. Ojo: la PS5 no usa formatos ultra panorámicos (verás bandas negras)."
+    }
+  ]
+}

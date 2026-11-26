@@ -1,0 +1,36 @@
+{
+  "_info": "Tiendas en España. Las reglas de envío son APROXIMADAS y configurables: revísalas en el carrito antes de pagar. {q} se sustituye por la búsqueda.",
+  "items": [
+    {"id": "amazon", "name": "Amazon.es", "search_url": "https://www.amazon.es/s?k={q}",
+     "shipping": {"cost": 0, "free_over": 0}, "trust": 5,
+     "promo_tip": "Busca la casilla 'Aplicar cupón' en la ficha y el precio del vendedor Amazon (no marketplace)."},
+    {"id": "pccomponentes", "name": "PcComponentes", "search_url": "https://www.pccomponentes.com/buscar/?query={q}",
+     "shipping": {"cost": 0, "free_over": 0}, "trust": 5,
+     "promo_tip": "Suelen publicar códigos en su newsletter y en Chollometro; revisa también 'reacondicionados'."},
+    {"id": "mediamarkt", "name": "MediaMarkt", "search_url": "https://www.mediamarkt.es/es/search.html?query={q}",
+     "shipping": {"cost": 4.99, "free_over": 49}, "trust": 5,
+     "promo_tip": "Ofertas 'Black Week' y precios para socios del club. Mira 'recogida en tienda' para no pagar envío."},
+    {"id": "elcorteingles", "name": "El Corte Inglés", "search_url": "https://www.elcorteingles.es/search-nwx/1/?s={q}",
+     "shipping": {"cost": 4.99, "free_over": 50}, "trust": 5,
+     "promo_tip": "A veces financian sin intereses con su tarjeta; compara el precio final, no la cuota."},
+    {"id": "fnac", "name": "Fnac", "search_url": "https://www.fnac.es/SearchResult/ResultList.aspx?Search={q}",
+     "shipping": {"cost": 3.99, "free_over": 30}, "trust": 4,
+     "promo_tip": "Los socios tienen descuentos en cheques; cuenta el cheque sólo si de verdad lo vas a gastar."},
+    {"id": "carrefour", "name": "Carrefour", "search_url": "https://www.carrefour.es/?q={q}",
+     "shipping": {"cost": 4.99, "free_over": 59}, "trust": 4,
+     "promo_tip": "Ojo a las ofertas en 'cheque ahorro' (descuento para la próxima compra, no inmediato)."},
+    {"id": "worten", "name": "Worten", "search_url": "https://www.worten.es/search?query={q}",
+     "shipping": {"cost": 4.99, "free_over": 50}, "trust": 4,
+     "promo_tip": "Distingue entre producto vendido por Worten y por vendedores del marketplace."},
+    {"id": "coolmod", "name": "Coolmod", "search_url": "https://www.coolmod.com/#!/?q={q}",
+     "shipping": {"cost": 5.95, "free_over": 50}, "trust": 4,
+     "promo_tip": "Tienda especialista en informática: buena para monitores gaming."},
+    {"id": "aliexpress", "name": "AliExpress Plaza", "search_url": "https://es.aliexpress.com/w/wholesale-{q}.html",
+     "shipping": {"cost": 0, "free_over": 0}, "trust": 3,
+     "promo_tip": "Cupones por tramo de gasto en campañas (11.11, Black Friday). Compra en 'Plaza' (envío desde España, garantía UE)."}
+  ],
+  "aggregators": [
+    {"name": "Chollometro (comunidad)", "url": "https://www.chollometro.com/search?q={q}"},
+    {"name": "Idealo (comparador)", "url": "https://www.idealo.es/resultados.html?q={q}"}
+  ]
+}
