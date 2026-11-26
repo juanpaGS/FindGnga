@@ -116,7 +116,8 @@ dialog label { display: block; margin: 10px 0; font-size: 14px; }
   .tabs button { padding: 6px 8px; font-size: 14px; }
 }
 .result-head > div:first-child { flex: 1 1 320px; min-width: 0; }
-.result-head > .price { flex: 0 0 auto; }
+.result-head > .price { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+@media (max-width: 600px) { .result-head > .price { flex-basis: 100%; } .bestline > * { min-width: 0; } }
 
 /* v0.2: búsqueda en vivo y predicción */
 a.go { display: inline-block; margin-top: 6px; padding: 6px 12px; border-radius: 10px; background: var(--accent); color: #fff;
@@ -170,3 +171,11 @@ details.panel { margin-top: 16px; }
 .scform input[type="text"], .scform select { width: 100%; box-sizing: border-box; }
 .scform label.inline { display: flex; }
 @media (max-width: 560px) { .scform .row { grid-template-columns: 1fr; } }
+
+/* mejor precio y comprar */
+.bestline { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 16px;
+  padding: 12px; margin: 8px 0 10px; border-radius: 12px; background: var(--surface-2); }
+.bestline.ok { background: var(--good-soft); }
+.bestline .full { flex-basis: 100%; }
+a.go.buy { background: var(--good); font-weight: 700; }
+a.go.ghosty { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }

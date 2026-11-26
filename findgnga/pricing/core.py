@@ -88,6 +88,10 @@ def is_fresh(offer: dict[str, Any], max_age_days: float | None, now: datetime | 
         return True
 
 
+def _confirmed(o: dict[str, Any]) -> bool:
+    return o.get("verified") in ("verified", "price_changed") or not str(o.get("source", "")).startswith("auto")
+
+
 def best_price(product: dict[str, Any], offers: list[dict[str, Any]], stores: dict[str, dict[str, Any]],
                promos: list[dict[str, Any]], today: date | None = None, max_age_days: float | None = None,
                include_used: bool = False) -> dict[str, Any]:
@@ -102,7 +106,8 @@ def best_price(product: dict[str, Any], offers: list[dict[str, Any]], stores: di
         ok = (o.get("in_stock", True) is not False and is_fresh(o, max_age_days)
               and (include_used or o.get("condition", "new") != "used"))
         (valid if ok else stale).append(price_offer(o, product, stores, promos, today))
-    valid.sort(key=lambda o: (bool(o.get("suspicious")), o["final_price"]))
+    # Primero lo comprobado en la tienda (o metido por ti); lo automático sin comprobar va detrás
+    valid.sort(key=lambda o: (bool(o.get("suspicious")), not _confirmed(o), o["final_price"]))
     if valid:
         best = valid[0]
         return {"final_price": best["final_price"], "estimated": False, "best": best, "offers": valid, "stale": stale}

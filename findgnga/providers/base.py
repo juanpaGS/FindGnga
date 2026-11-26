@@ -106,6 +106,17 @@ def price_band(product: dict[str, Any], category: str) -> tuple[float, float]:
     return (ref * 0.55, ref * 1.6) if category == "console" else (ref * 0.45, ref * 1.8)
 
 
+SECOND_HAND_SITES = ("wallapop", "vinted", "milanuncios", "todocoleccion", "cashconverters", "cash converters",
+                     "backmarket", "back market", "eurocash")
+
+
+def is_second_hand_site(store_name: str | None, url: str | None) -> bool:
+    """Webs de segunda mano o reacondicionados: sus anuncios se venden y desaparecen enseguida."""
+    host = (urlparse(url).hostname or "") if url else ""
+    text = (host + " " + (store_name or "")).lower()
+    return any(s in text for s in SECOND_HAND_SITES)
+
+
 def condition_of(title: str) -> str:
     return "used" if USED_RE.search(norm(title)) else "new"
 

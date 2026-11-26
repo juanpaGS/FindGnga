@@ -37,10 +37,25 @@ para lo que tú ya tienes en casa**.
    |---|---|---|
    | Google Shopping vía [SerpApi](https://serpapi.com) | API key gratuita | la más fiable y completa |
    | Amazon.es y eBay.es vía SerpApi | la misma key | estable (eBay desactivado por defecto) |
+   | Idealo vía Google (SerpApi) | la misma key | precio de referencia "desde X €" (sin enlace de compra) |
    | Chollometro (chollos + códigos) | no | beta |
-   | Idealo | no | beta (puede bloquear) |
+   | Idealo directo | no | bloqueado (403 anti-bots) |
    | Tiendas directamente (Amazon, PcComponentes, MediaMarkt…) | no | beta (lee datos estructurados) |
    | URLs vigiladas (las que guardaste) | no | estable |
+
+   **Enlaces directos y caducados.** Google Shopping a menudo da un enlace a
+   Google o a la *portada* de la tienda. FindGnga abre la ficha del producto en
+   Google (`google_immersive_product`, 1 búsqueda de SerpApi por producto; las 3
+   ofertas más baratas por defecto, ajustable en *⚙️ Ajustes → Enlaces directos*)
+   y saca el **enlace a la ficha de cada tienda**, con su **precio original
+   tachado** si está rebajado. Después abre las más baratas y descarta las que
+   **ya no existen** (404/410, redirección a la portada, "ya no está
+   disponible"); si toda la tanda está caducada, revisa la siguiente. El botón
+   **🛒 Comprar ya** sólo aparece si el precio y el stock se han comprobado ahora;
+   si no, verás *Ir (sin comprobar)* o *Ver en Google*. Wallapop, Vinted,
+   Milanuncios, Back Market… cuentan como **segunda mano** y no entran en el
+   mejor precio salvo que lo actives. *Ajustes* muestra cuántas búsquedas de
+   SerpApi gasta cada clic.
 
    Las ofertas automáticas se **reemplazan** en cada búsqueda y los precios
    **caducan** (3 días por defecto): lo agotado o lo que ha subido deja de contar solo.

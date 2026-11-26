@@ -255,7 +255,7 @@ function sourceLabel(src) {
   if (src.startsWith("auto:")) return "🤖 " + (PROVIDER_NAMES[src.slice(5)] || src.slice(5));
   return SOURCE_LABEL[src] || src;
 }
-const PROVIDER_NAMES = { serpapi: "Google Shopping", serpapi_amazon: "Amazon.es", serpapi_ebay: "eBay", chollometro: "Chollometro", idealo: "Idealo", stores: "tienda", watched: "URL vigilada" };
+const PROVIDER_NAMES = { serpapi: "Google Shopping", serpapi_amazon: "Amazon.es", serpapi_ebay: "eBay", serpapi_idealo: "Idealo (Google)", chollometro: "Chollometro", idealo: "Idealo", stores: "tienda", watched: "URL vigilada" };
 function ago(iso) {
   if (!iso) return "";
   const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -332,6 +332,7 @@ function providerLine(providers) {
 const VERIF = {
   verified: ["✔ verificado en la tienda", "b-live"], price_changed: ["⚠ precio actualizado en la tienda", "b-cheap"],
   out_of_stock: ["Agotado en la tienda", "b-est"], unverifiable: ["sin verificar", "b-est"],
+  gone: ["✖ enlace caducado", "b-est"],
 };
 
 function verifBadge(o) {
@@ -355,6 +356,31 @@ function coverageLine(cv) {
     ${cv.level === "baja" ? ` — <b>puede haber precios más bajos que no vemos</b>; activa más fuentes en <a href="#settings" data-go="settings">Ajustes</a>.` : ""}</div>`;
 }
 
+const isConfirmed = (o) => ["verified", "price_changed"].includes(o.verification?.status || o.verified);
+const isGoogle = (u) => /\/\/[^/]*google\./.test(u || "");
+const oldPrice = (o) => o.old_price && o.old_price > o.price ? ` <s class="muted">${eur(o.old_price)}</s> <span class="badge b-cheap">−${Math.round((1 - o.price / o.old_price) * 100)} %</span>` : "";
+
+function buyButton(o) {
+  if (o.dead_link) return `<span class="muted small">Ya no existe</span>`;
+  if (o.in_stock === false) return `<span class="muted small">Agotado</span>`;
+  if (isConfirmed(o)) return `<a class="go buy" href="${esc(o.url)}" target="_blank" rel="noopener" title="Precio y stock comprobados ahora en la tienda">🛒 Comprar ya</a>`;
+  if (isGoogle(o.url)) return `<a class="go ghosty" href="${esc(o.url)}" target="_blank" rel="noopener" title="Enlace a Google Shopping: desde ahí eliges tienda">Ver en Google ↗</a>`;
+  return `<a class="go ghosty" href="${esc(o.url)}" target="_blank" rel="noopener" title="No se pudo comprobar en la tienda: revisa precio y stock">Ir (sin comprobar) ↗</a>`;
+}
+
+function bestLine(r) {
+  const b = r.best;
+  if (!b) return "";
+  const cu = r.cheaper_unconfirmed;
+  return `<div class="bestline ${r.best_confirmed ? "ok" : ""}">
+    <div>${r.best_confirmed ? "✅ <b>Mejor precio comprobado ahora</b>" : "🔎 <b>Mejor precio encontrado</b> <span class=\"small muted\">(no se pudo comprobar en la tienda)</span>"}
+      <div class="big-num">${eur(b.final_price)}${oldPrice(b)}</div>
+      <div class="small">${esc(b.store_name)} · ${esc(b.title || "")}${b.shipping_cost ? ` · incluye ${eur(b.shipping_cost)} de envío` : ""}</div></div>
+    <div>${buyButton(b)}</div>
+    ${cu ? `<div class="small muted full">Hay una más barata sin comprobar: ${eur(cu.final_price)} en ${esc(cu.store_name)}. Revisa que siga en pie antes de fiarte.</div>` : ""}
+  </div>`;
+}
+
 function renderLive(r) {
   if (r.loading) return `<div class="live"><span class="muted">🔎 Buscando en todas las fuentes y verificando en las tiendas…</span></div>`;
   if (r.error) return `<div class="live"><span class="error">${esc(r.error)}</span></div>`;
@@ -363,7 +389,10 @@ function renderLive(r) {
   return `<div class="live">
     <div class="live-head"><b>Ofertas encontradas ${ago(r.searched_at)}</b>${r.cached ? ` <span class="muted small">(caché)</span>` : ""}
       <span class="muted small">· ${r.listings.length} válidas, ${r.rejected_count} descartadas (accesorios, otros modelos, precios raros)</span></div>
+    ${bestLine(r)}
     ${coverageLine(r.coverage)}
+    ${r.dead_links ? `<div class="small muted">🧹 ${r.dead_links} ${r.dead_links === 1 ? "enlace caducado descartado" : "enlaces caducados descartados"} (la tienda ya no tiene esa oferta).</div>` : ""}
+    ${(r.references || []).length ? `<div class="small">📊 ${r.references.map((x) => `${esc(x.source)}: desde <b>${eur(x.price)}</b> <a href="${esc(x.url)}" target="_blank" rel="noopener">ver ↗</a>`).join(" · ")} <span class="muted">(referencia del comparador)</span></div>` : ""}
     <div class="pvs">${providerLine(r.providers)}</div>
     ${sus ? `<div class="notice">🕵️ La oferta más barata (${eur(sus.final_price)} en ${esc(sus.store_name)}) parece sospechosa y no la usamos como mejor precio: ${esc((sus.warnings || []).join(" · "))}</div>` : ""}
     ${rows.length ? `<div class="scroll-x"><table><tr><th>Tienda</th><th>Producto</th><th class="num">Total</th><th></th></tr>
@@ -371,11 +400,11 @@ function renderLive(r) {
         <td class="small">${esc(o.title)}
           ${o.condition === "used" ? `<span class="badge b-est">Usado/reacond.</span>` : ""}${o.bundle ? `<span class="badge b-q">Pack</span>` : ""}
           ${verifBadge(o)}${o.code ? ` código <span class="code">${esc(o.code)}</span>` : ""}
-          <div class="muted">${eur(o.price)} ${o.shipping_cost ? "+ " + eur(o.shipping_cost) + " envío" : "· envío gratis*"}${o.promo_code ? " − cupón " + esc(o.promo_code) : ""}
+          <div class="muted">${eur(o.price)}${oldPrice(o)} ${o.shipping_cost ? "+ " + eur(o.shipping_cost) + " envío" : "· envío gratis*"}${o.promo_code ? " − cupón " + esc(o.promo_code) : ""}
             · vía ${(o.seen_in?.length ? o.seen_in : [o.provider]).map((x) => PROVIDER_NAMES[x] || x).join(", ")}</div>
           ${(o.warnings || []).map((w) => `<div class="warnline">⚠️ ${esc(w)}</div>`).join("")}</td>
         <td class="num"><b>${eur(o.final_price)}</b></td>
-        <td><a class="go" href="${esc(o.url)}" target="_blank" rel="noopener">Ir ↗</a>
+        <td>${buyButton(o)}
           ${o.store.startsWith("x-") ? `<button class="ghost small" data-shopcheck="${esc(JSON.stringify({ url: o.shop_url || o.url, store_name: o.store_name, price: o.price, product_id: r.product_id }))}" title="¿Es fiable esta tienda?">🛡️ Comprobar</button>` : ""}</td></tr>`).join("")}</table></div>
       <p class="muted small">* Envío estimado con las reglas de la tienda cuando la fuente no lo indica. Confirma siempre el total en el carrito.</p>`
     : `<p class="muted">No se encontraron ofertas válidas. ${Object.values(r.providers).every((s) => !s.ok) ? "Ninguna fuente respondió: revisa <a href=\"#settings\" data-go=\"settings\">Ajustes → Diagnóstico</a>." : "Prueba más tarde o usa los enlaces de tiendas."}</p>`}
@@ -744,6 +773,13 @@ const pct = (r) => r && r[1] > 0 ? `${Math.round(r[0] * 100)}–${Math.round(r[1
 
 /* ------------------------------------------------------------------ ajustes */
 
+function serpCost(st) {
+  if (!st.serpapi_key_set) return 0;
+  const p = st.providers || {};
+  return ["serpapi", "serpapi_amazon", "serpapi_ebay", "serpapi_idealo"].filter((k) => p[k]).length
+    + (p.serpapi ? (st.resolve_links ?? 3) : 0);
+}
+
 async function viewSettings() {
   const st = state.settings = await api("/api/settings");
   app.innerHTML = `<h1>⚙️ Ajustes de búsqueda</h1>
@@ -760,6 +796,8 @@ async function viewSettings() {
         <label>Los precios caducan a los <input type="number" id="age" min="1" max="60" value="${st.max_offer_age_days}" style="width:80px;display:inline-block"> días</label>
         <label><input type="checkbox" id="used" ${st.include_used ? "checked" : ""}> Contar reacondicionados/segunda mano en el mejor precio</label>
         <label>Verificar en la propia tienda las <input type="number" id="vtop" min="0" max="20" value="${st.verify_top ?? 6}" style="width:70px;display:inline-block"> ofertas más baratas (0 = no)</label>
+        <label>Enlaces directos: abrir la ficha de los <input type="number" id="rlinks" min="0" max="10" value="${st.resolve_links ?? 3}" style="width:70px;display:inline-block"> productos más baratos de Google Shopping (1 búsqueda de SerpApi cada uno; 0 = no)</label>
+        <p class="small muted">Cada clic en «Buscar precio ahora» gasta unas <b id="cost">${serpCost(st)}</b> búsquedas de SerpApi.</p>
       </div><p class="error" id="serr"></p></div>
     <div class="panel" style="margin-top:12px"><h3>🩺 Diagnóstico</h3>
       <p class="small muted">Prueba cada fuente con «PS5 Slim Digital» sin guardar nada y guarda el HTML recibido en <code>data/user/snapshots/</code> para poder afinar los lectores.</p>
@@ -775,6 +813,7 @@ async function viewSettings() {
         <label class="secondary-btn">⬆️ Restaurar copia<input type="file" id="import" accept="application/json" hidden></label>
       </div><p class="small" id="bkOut"></p></div>`;
   $("#vtop").onchange = (e) => save({ verify_top: Math.max(0, Math.min(20, +e.target.value || 0)) });
+  $("#rlinks").onchange = (e) => save({ resolve_links: Math.max(0, Math.min(10, +e.target.value || 0)) });
   $("#doctor").onclick = async (e) => {
     e.target.disabled = true; $("#docOut").innerHTML = `<p class="muted">Comprobando…</p>`;
     try {
@@ -802,7 +841,7 @@ async function viewSettings() {
     } catch (err) { $("#bkOut").textContent = "Error: " + err.message; }
   };
   const save = async (body) => {
-    try { state.settings = await api("/api/settings", { method: "PUT", body }); state.live = {}; }
+    try { state.settings = await api("/api/settings", { method: "PUT", body }); state.live = {}; const c = $("#cost"); if (c) c.textContent = serpCost(state.settings); }
     catch (e) { $("#serr").textContent = e.message; }
   };
   $("#saveKey").onclick = async () => { const k = $("#key").value.trim(); if (k) { await save({ serpapi_key: k }); viewSettings(); } };

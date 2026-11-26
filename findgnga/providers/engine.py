@@ -24,7 +24,7 @@ from .. import storage
 from ..pricing import live
 from ..pricing.core import price_offer
 from . import chollometro, idealo, serpapi, stores, verify
-from .base import condition_of, is_bundle, matcher, new_client, price_band, resolve_store
+from .base import condition_of, is_bundle, is_second_hand_site, matcher, new_client, price_band, resolve_store
 
 PROVIDERS = [
     {"id": "serpapi", "name": "Google Shopping (SerpApi)", "needs_key": True, "beta": False,
@@ -33,10 +33,12 @@ PROVIDERS = [
      "desc": "Resultados de Amazon.es con la misma API key (gasta una búsqueda más del plan)."},
     {"id": "serpapi_ebay", "name": "eBay.es (SerpApi)", "needs_key": True, "beta": False,
      "desc": "eBay España: mucho vendedor particular/reacondicionado. Misma API key."},
+    {"id": "serpapi_idealo", "name": "Idealo (vía Google, SerpApi)", "needs_key": True, "beta": False,
+     "desc": "Precio mínimo que muestra Idealo y enlace a su ficha, leído a través de Google (Idealo bloquea los accesos directos). Gasta 1 búsqueda."},
     {"id": "chollometro", "name": "Chollometro", "needs_key": False, "beta": True,
      "desc": "Chollos de la comunidad (incluye códigos promocionales)."},
     {"id": "idealo", "name": "Idealo", "needs_key": False, "beta": True,
-     "desc": "Comparador de precios. Puede bloquear peticiones automáticas."},
+     "desc": "Lectura directa de idealo.es. Idealo suele bloquear a los programas (responde 403): usa «Idealo vía Google»."},
     {"id": "stores", "name": "Tiendas directamente", "needs_key": False, "beta": True,
      "desc": "Busca en Amazon, PcComponentes, MediaMarkt… leyendo sus datos estructurados."},
     {"id": "watched", "name": "URLs vigiladas", "needs_key": False, "beta": False,
@@ -115,11 +117,12 @@ async def collect(product: dict[str, Any], cfg: dict[str, Any], snapshot_dir: Pa
         tasks = []
         if "serpapi" in enabled and cfg.get("serpapi_key"):
             tasks.append(_timed("serpapi", serpapi.search(client, query, cfg["serpapi_key"])))
-        for pid, fn in (("serpapi_amazon", serpapi.search_amazon), ("serpapi_ebay", serpapi.search_ebay)):
+        for pid, fn in (("serpapi_amazon", serpapi.search_amazon), ("serpapi_ebay", serpapi.search_ebay),
+                        ("serpapi_idealo", serpapi.search_idealo)):
             if pid in enabled and cfg.get("serpapi_key"):
                 tasks.append(_timed(pid, fn(client, query, cfg["serpapi_key"])))
         if not cfg.get("serpapi_key"):
-            for pid in ("serpapi", "serpapi_amazon", "serpapi_ebay"):
+            for pid in ("serpapi", "serpapi_amazon", "serpapi_ebay", "serpapi_idealo"):
                 if pid in enabled:
                     status[pid] = {"ok": False, "raw": 0, "error": "Falta la API key (Ajustes)", "skipped": True}
         if "chollometro" in enabled:
@@ -161,9 +164,11 @@ def filter_listings(product: dict[str, Any], category: str, listings: list[dict[
         name = it.get("store_name")
         if not sid:
             sid, name = resolve_store(it.get("store_name"), it.get("url"))
+        second_hand = is_second_hand_site(it.get("store_name"), it.get("url"))
         accepted.append({**it, "store": sid, "store_name": name or sid,
                          "bundle": category == "console" and is_bundle(it.get("title", "")),
-                         "condition": it.get("condition") or condition_of(it.get("title", ""))})
+                         "marketplace": it.get("marketplace") or second_hand,
+                         "condition": "used" if second_hand else it.get("condition") or condition_of(it.get("title", ""))})
     for name, st in status.items():
         st["accepted"] = sum(1 for a in accepted if a["provider"] == name)
     return accepted, rejected
@@ -215,7 +220,8 @@ def save(product_id: str, priced: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "source": f"auto:{o['provider']}", "checked_at": now,
                     "verified": (o.get("verification") or {}).get("status"), "confidence": o.get("confidence"),
                     "warnings": o.get("warnings", []), "seen_in": o.get("seen_in", []),
-                    "suspicious": o.get("suspicious", False), "bundle": o.get("bundle", False)})
+                    "suspicious": o.get("suspicious", False), "bundle": o.get("bundle", False),
+                    "old_price": o.get("old_price"), "dead_link": o.get("dead_link", False)})
     storage.write_user("offers", kept + new)
     hist = storage.read_user("price_history", [])
     for o in best.values():
@@ -223,6 +229,53 @@ def save(product_id: str, priced: list[dict[str, Any]]) -> list[dict[str, Any]]:
             hist.append({"product_id": product_id, "store": o["store"], "price": o["price"], "date": now})
     storage.write_user("price_history", hist[-5000:])
     return new
+
+
+async def resolve_direct_links(product: dict[str, Any], category: str, accepted: list[dict[str, Any]],
+                               rejected: list[dict[str, Any]], status: dict[str, Any],
+                               cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Cambia los enlaces de Google Shopping por la ficha del producto en cada tienda.
+
+    Google Shopping a veces sólo da su propia página (o una que acaba en la portada de la tienda).
+    Para los productos más baratos se abre su ficha en Google (1 búsqueda de SerpApi cada uno),
+    que lista las tiendas con el enlace directo, el precio y el precio anterior.
+    """
+    n = int(cfg.get("resolve_links", 0) or 0)
+    key = cfg.get("serpapi_key")
+    if n <= 0 or not key:
+        return accepted
+    cands = sorted((a for a in accepted if a["provider"] == "serpapi" and a.get("immersive_token")
+                    and a["condition"] == "new"), key=lambda a: a["price"])
+    tokens: list[tuple[str, str]] = []
+    for a in cands:
+        if a["immersive_token"] not in {t for t, _ in tokens}:
+            tokens.append((a["immersive_token"], a.get("title", "")))
+        if len(tokens) >= n:
+            break
+    if not tokens:
+        return accepted
+    async with new_client() as client:
+        results = await asyncio.gather(*(serpapi.resolve(client, t, key, title) for t, title in tokens),
+                                       return_exceptions=True)
+    raw, done, errors = [], set(), []
+    for (token, _), res in zip(tokens, results):
+        if isinstance(res, Exception):
+            errors.append(f"{type(res).__name__}: {res}")
+            continue
+        if res:
+            done.add(token)
+            raw += [{**x, "provider": "serpapi"} for x in res]
+    new_ok, new_bad = filter_listings(product, category, raw, {})
+    rejected += new_bad
+    kept = [a for a in accepted if a.get("immersive_token") not in done]
+    st = status.setdefault("serpapi", {"ok": True, "raw": 0})
+    st["resolved"] = len(done)
+    st["direct_links"] = len(new_ok)
+    if errors:
+        st["resolve_errors"] = errors[:3]
+    out = kept + new_ok
+    st["accepted"] = sum(1 for a in out if a["provider"] == "serpapi")
+    return out
 
 
 async def live_search(product_id: str, force: bool = False, dry_run: bool = False,
@@ -237,6 +290,9 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
     cfg = settings_mod.get()
     listings, status = await collect(product, cfg, snapshot_dir, only)
     accepted, rejected = filter_listings(product, category, listings, status)
+    references = [a for a in accepted if a.get("reference")]
+    accepted = [a for a in accepted if not a.get("reference")]
+    accepted = await resolve_direct_links(product, category, accepted, rejected, status, cfg)
     merged = verify.merge_duplicates(accepted)
     merged.sort(key=lambda o: (o["condition"] == "used", o["price"]))
     if cfg.get("verify_top", 0) > 0 and merged:
@@ -249,7 +305,12 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
         save(product_id, priced)
     target = cfg.get("targets", {}).get(product_id)
     new_ok = [o for o in priced if o["condition"] == "new" and o.get("in_stock") is not False]
-    best_new = next((o for o in new_ok if not o["suspicious"]), None)
+    clean = [o for o in new_ok if not o["suspicious"]]
+    confirmed = [o for o in clean if (o.get("verification") or {}).get("status") in ("verified", "price_changed")]
+    # Mejor precio = el más barato COMPROBADO ahora en la tienda; si no se pudo comprobar ninguno, el más barato
+    best_new = confirmed[0] if confirmed else (clean[0] if clean else None)
+    cheaper_unconfirmed = clean[0] if confirmed and clean and clean[0] is not best_new \
+        and clean[0]["final_price"] < best_new["final_price"] else None
     cheapest = min(new_ok, key=lambda o: o["final_price"], default=None)
     ok_sources = [k for k, v in status.items() if v.get("ok")]
     coverage = {
@@ -262,6 +323,10 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
     result = {
         "coverage": coverage,
         "cheapest_suspicious": cheapest if cheapest and cheapest is not best_new and cheapest["suspicious"] else None,
+        "best_confirmed": bool(confirmed), "cheaper_unconfirmed": cheaper_unconfirmed,
+        "dead_links": sum(1 for o in priced if o.get("dead_link")),
+        "references": [{"source": r["store_name"], "title": r.get("title"), "price": r["price"], "url": r["url"]}
+                       for r in sorted(references, key=lambda r: r["price"])[:3]],
         "product_id": product_id, "query": product["search_query"],
         "searched_at": datetime.now().isoformat(timespec="seconds"),
         "listings": priced, "rejected": rejected[:40], "rejected_count": len(rejected),

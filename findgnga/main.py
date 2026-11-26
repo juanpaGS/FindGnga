@@ -215,6 +215,7 @@ class SettingsIn(BaseModel):
     max_offer_age_days: float | None = Field(None, gt=0, le=60)
     include_used: bool | None = None
     verify_top: int | None = Field(None, ge=0, le=20)
+    resolve_links: int | None = Field(None, ge=0, le=10)
 
 
 class TargetIn(BaseModel):
