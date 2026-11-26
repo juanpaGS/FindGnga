@@ -147,5 +147,28 @@
       "name": "Chollometro (comunidad)",
       "url": "https://www.chollometro.com/search?q={q}"
     }
-  ]
+  ],
+  "trusted_domains": {
+    "_info": "Dominios oficiales de tiendas y marcas fiables que no están en 'items'. El detector de estafas los trata como conocidos.",
+    "list": [
+      "playstation.com",
+      "sony.es",
+      "xtralife.com",
+      "alcampo.es",
+      "eroski.es",
+      "apple.com",
+      "samsung.com",
+      "lg.com",
+      "dell.com",
+      "lenovo.com",
+      "hp.com",
+      "asus.com",
+      "beep.es",
+      "pccomponentes.pt",
+      "amazon.com",
+      "amazon.de",
+      "amazon.fr",
+      "amazon.it"
+    ]
+  }
 }

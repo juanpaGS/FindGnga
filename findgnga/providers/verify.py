@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from .. import storage
+from .. import shopcheck, storage
 from ..pricing import live
 
 UNVERIFIABLE_HOSTS = ("google.", "chollometro.com/ofertas", "chollometro.com/share")
@@ -94,11 +94,26 @@ def merge_duplicates(offers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return merged
 
 
-def assess(offers: list[dict[str, Any]]) -> None:
-    """Añade 'warnings', 'suspicious' y 'confidence' (0-100) a cada oferta."""
+AGGREGATOR_HOSTS = ("google.", "chollometro.", "idealo.", "serpapi.")
+
+
+def shop_risk(o: dict[str, Any], ref: float | None) -> dict[str, Any] | None:
+    """Detector de tiendas falsas (sin internet) para tiendas que no están en la lista."""
+    url = o.get("shop_url") or o.get("url") or ""
+    host = (urlparse(url).hostname or "").lower()
+    if not host or any(h in host for h in AGGREGATOR_HOSTS):
+        return None
+    return shopcheck.quick_check(url, o.get("store_name"), o.get("price"), ref)
+
+
+def assess(offers: list[dict[str, Any]], ref: float | None = None) -> None:
+    """Añade 'warnings', 'suspicious' y 'confidence' (0-100) a cada oferta.
+
+    ``ref`` es el precio oficial/de referencia del producto (para el detector de estafas).
+    """
     trust = {s["id"]: s.get("trust", 3) for s in storage.load_catalog("stores")}
-    ref = [o["price"] for o in offers if o["condition"] == "new" and o.get("in_stock") is not False]
-    median = statistics.median(ref) if len(ref) >= 3 else None
+    seen_prices = [o["price"] for o in offers if o["condition"] == "new" and o.get("in_stock") is not False]
+    median = statistics.median(seen_prices) if len(seen_prices) >= 3 else None
     for o in offers:
         w: list[str] = []
         score = 40
@@ -112,9 +127,20 @@ def assess(offers: list[dict[str, Any]]) -> None:
             score -= 40
             w.append("Agotado en la tienda")
         score += min(20, 10 * (len(o.get("seen_in", [])) - 1))
+        risk = None
         if o["store"].startswith("x-"):
             score -= 20
-            w.append("Tienda que no está en tu lista: mira opiniones y condiciones antes de comprar")
+            risk = shop_risk(o, ref)
+            if risk and risk["verdict"] != "ok":
+                o["shop_risk"] = {k: risk[k] for k in ("risk", "verdict", "label", "domain")}
+                bad = [s["title"] for s in risk["signals"] if s["level"] in ("danger", "warn")][:3]
+                if risk["verdict"] == "scam":
+                    score -= 40
+                    w.append("🚩 Posible tienda falsa: " + "; ".join(bad))
+                else:
+                    w.append("Tienda dudosa: " + "; ".join(bad or ["no la conocemos"]))
+            else:
+                w.append("Tienda que no está en tu lista: mira opiniones y condiciones antes de comprar")
         else:
             score += 2 * trust.get(o["store"], 3)
         host = (urlparse(o.get("url") or "").hostname or "").lower()
@@ -123,7 +149,9 @@ def assess(offers: list[dict[str, Any]]) -> None:
             o["marketplace"] = True
             w.append("Vendedor externo (marketplace): revisa quién vende y la garantía")
         o["suspicious"] = bool(median and o["condition"] == "new" and o["price"] < 0.75 * median)
-        if o["suspicious"]:
+        if risk and risk["verdict"] == "scam":
+            o["suspicious"] = True
+        elif o["suspicious"]:
             score -= 30
             w.append(f"Mucho más barato que el resto (mediana {median:.0f} €): puede ser un error o una estafa")
         o["warnings"] = w

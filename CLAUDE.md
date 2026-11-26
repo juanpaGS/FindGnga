@@ -7,7 +7,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 ## Stack y arranque
 - Python ≥3.10 + FastAPI (`findgnga/`), web sin build (`web/`: index.html, app.js, styles.css).
 - `./run.sh` (macOS/Linux) · `run.bat` (Windows) → http://127.0.0.1:8000
-- Tests: `.venv/bin/python -m pytest -q` (38 tests). CI: `.github/workflows/tests.yml`.
+- Tests: `.venv/bin/python -m pytest -q` (45 tests). CI: `.github/workflows/tests.yml`.
 - CLI: `python -m findgnga.cli refresh|diagnose|doctor|export|import`.
 
 ## Mapa del código
@@ -16,6 +16,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 - `providers/engine.py` búsqueda automática multi-fuente → filtra modelo/accesorios/precio,
   une duplicados, `verify.py` comprueba precio/stock en la tienda y puntúa fiabilidad.
   Fuentes: serpapi (Google Shopping, Amazon, eBay; requiere key), chollometro, idealo, stores, watched.
+- `shopcheck.py` detector de tiendas falsas (dominio, precio, pago, IBAN, RDAP); lo usa `verify.assess` y la pestaña 🛡️.
 - `predict.py` + `data/events.json` predicción de bajadas y plan de ahorro.
 - `pricing/core.py` precio final = precio + envío − cupón; ofertas caducan (3 días).
 - Datos de usuario en `data/user/` (gitignored): profile, settings (API key), offers, price_history, promos.

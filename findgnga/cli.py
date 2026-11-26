@@ -4,6 +4,8 @@
     python -m findgnga.cli refresh ps5-pro    # sólo esos productos
     python -m findgnga.cli diagnose           # prueba cada fuente y guarda el HTML en data/user/snapshots
     python -m findgnga.cli doctor             # ¿funciona la instalación en este ordenador?
+    python -m findgnga.cli checkshop URL [--price 349.99] [--product ps5-slim-digital] [--name "Tienda"] [--text pago.txt] [--offline]
+                                              # ¿es fiable esta tienda?
     python -m findgnga.cli export copia.json  # copia de seguridad de tus datos (añade --with-key para incluir la API key)
     python -m findgnga.cli import copia.json  # restaurar en otro ordenador
 
@@ -75,6 +77,31 @@ async def doctor() -> int:
     return 1 if r["errors"] else 0
 
 
+def _opt(argv: list[str], name: str) -> str | None:
+    return argv[argv.index(name) + 1] if name in argv and argv.index(name) + 1 < len(argv) else None
+
+
+async def checkshop(argv: list[str]) -> int:
+    from . import shopcheck
+    text = ""
+    if _opt(argv, "--text"):
+        with open(_opt(argv, "--text"), encoding="utf-8") as fh:
+            text = fh.read()
+    price = _opt(argv, "--price")
+    r = await shopcheck.check(argv[0], _opt(argv, "--name"), float(price.replace(",", ".")) if price else None,
+                              _opt(argv, "--product"), text, online="--offline" not in argv)
+    icons = {"danger": "🚩", "warn": "⚠️ ", "info": "ℹ️ ", "ok": "✅"}
+    print(f"{r['label']}  (riesgo {r['risk']}/100) · {r['domain']}\n")
+    for s in r["signals"]:
+        print(f"  {icons[s['level']]} {s['title']}" + (f"\n       {s['detail']}" if s["detail"] else ""))
+    for n in r.get("notes", []):
+        print(f"  · No comprobado: {n}")
+    print("\nQué hacer:")
+    for a in r["advice"]:
+        print(f"  → {a}")
+    return 2 if r["verdict"] == "scam" else 1 if r["verdict"] == "doubtful" else 0
+
+
 def main(argv: list[str]) -> None:
     cmd = argv[0] if argv else "refresh"
     if cmd == "refresh":
@@ -93,6 +120,8 @@ def main(argv: list[str]) -> None:
         from . import backup
         with open(argv[1], encoding="utf-8") as fh:
             print("Restaurado:", ", ".join(backup.restore(json.load(fh))))
+    elif cmd == "checkshop" and len(argv) > 1:
+        sys.exit(asyncio.run(checkshop(argv[1:])))
     elif cmd == "diagnose":
         asyncio.run(diagnose(argv[1] if len(argv) > 1 else "ps5-slim-digital"))
     else:

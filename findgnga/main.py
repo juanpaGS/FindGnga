@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from . import backup as backup_mod
 from . import doctor as doctor_mod
 from . import predict as predict_mod
-from . import search, storage
+from . import search, shopcheck, storage
 from . import settings as settings_mod
 from .pricing import deals, live
 from .providers import engine
@@ -297,6 +297,22 @@ def api_restore(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(400, str(exc)) from exc
     engine._cache.clear()
     return {"restored": restored}
+
+
+class ShopCheckIn(BaseModel):
+    url: str = Field(min_length=4, max_length=2000)
+    store_name: str | None = Field(None, max_length=120)
+    price: float | None = Field(None, gt=0)
+    product_id: str | None = None
+    text: str = Field("", max_length=50000)  # texto pegado de la página de pago (se analiza en local)
+    online: bool = True
+
+
+@app.post("/api/shopcheck")
+async def api_shopcheck(req: ShopCheckIn) -> dict[str, Any]:
+    """¿Es fiable esta tienda? Suma señales de dirección, precio, forma de pago y antigüedad del dominio."""
+    return await shopcheck.check(req.url.strip(), (req.store_name or "").strip() or None, req.price,
+                                 req.product_id, req.text, req.online)
 
 
 @app.get("/api/calendar")

@@ -375,7 +375,8 @@ function renderLive(r) {
             · vía ${(o.seen_in?.length ? o.seen_in : [o.provider]).map((x) => PROVIDER_NAMES[x] || x).join(", ")}</div>
           ${(o.warnings || []).map((w) => `<div class="warnline">⚠️ ${esc(w)}</div>`).join("")}</td>
         <td class="num"><b>${eur(o.final_price)}</b></td>
-        <td><a class="go" href="${esc(o.url)}" target="_blank" rel="noopener">Ir ↗</a></td></tr>`).join("")}</table></div>
+        <td><a class="go" href="${esc(o.url)}" target="_blank" rel="noopener">Ir ↗</a>
+          ${o.store.startsWith("x-") ? `<button class="ghost small" data-shopcheck="${esc(JSON.stringify({ url: o.shop_url || o.url, store_name: o.store_name, price: o.price, product_id: r.product_id }))}" title="¿Es fiable esta tienda?">🛡️ Comprobar</button>` : ""}</td></tr>`).join("")}</table></div>
       <p class="muted small">* Envío estimado con las reglas de la tienda cuando la fuente no lo indica. Confirma siempre el total en el carrito.</p>`
     : `<p class="muted">No se encontraron ofertas válidas. ${Object.values(r.providers).every((s) => !s.ok) ? "Ninguna fuente respondió: revisa <a href=\"#settings\" data-go=\"settings\">Ajustes → Diagnóstico</a>." : "Prueba más tarde o usa los enlaces de tiendas."}</p>`}
   </div>`;
@@ -535,6 +536,7 @@ function bindResultActions(root, reload) {
   root.querySelectorAll("[data-predict]").forEach((b) => b.onclick = () => runPredict(b.dataset.predict, root));
   root.querySelectorAll("[data-saved]").forEach((inp) => inp.onchange = () => runPredict(inp.dataset.saved, root, +inp.value || 0));
   root.querySelectorAll("[data-go]").forEach((a) => a.onclick = (e) => { e.preventDefault(); go(a.dataset.go); });
+  root.querySelectorAll("[data-shopcheck]").forEach((b) => b.onclick = () => { state.shopPrefill = JSON.parse(b.dataset.shopcheck); go("shopcheck"); });
   root.querySelectorAll("[data-target]").forEach((b) => b.onclick = async () => {
     const cur = state.settings?.targets?.[b.dataset.target];
     const v = prompt(`Avísame cuando «${b.dataset.name}» baje de (€). Vacío para quitar la alerta:`, cur ?? "");
@@ -652,6 +654,68 @@ async function viewPromos() {
   app.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { await api(`/api/promos/${b.dataset.del}`, { method: "DELETE" }); viewPromos(); });
 }
 
+/* ------------------------------------------------------------------ ¿es fiable? */
+
+const SIG_ICON = { danger: "🚩", warn: "⚠️", info: "ℹ️", ok: "✅" };
+
+function renderShopCheck(r) {
+  const cls = { scam: "sc-scam", doubtful: "sc-doubt", ok: "sc-ok" }[r.verdict];
+  return `<div class="panel sc ${cls}">
+    <div class="sc-head"><span class="sc-label">${esc(r.label)}</span>
+      <span class="small">riesgo <b>${r.risk}</b>/100 · ${esc(r.domain || "")}${r.online ? "" : " · sin comprobar en línea"}</span></div>
+    <div class="meter"><div style="width:${r.risk}%"></div></div>
+    <ul class="sigs">${r.signals.map((s) => `<li class="sig-${s.level}"><span>${SIG_ICON[s.level]}</span><div><b>${esc(s.title)}</b>
+      ${s.detail ? `<div class="small muted">${esc(s.detail)}</div>` : ""}</div></li>`).join("")}</ul>
+    ${(r.notes || []).length ? `<p class="small muted">No se pudo comprobar: ${esc(r.notes.join(" · "))}</p>` : ""}
+    <h3>Qué hacer</h3><ul>${r.advice.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>
+  </div>`;
+}
+
+function viewShopCheck() {
+  const pre = state.shopPrefill || {};
+  state.shopPrefill = null;
+  const products = [...state.catalog.consoles, ...state.catalog.monitors];
+  app.innerHTML = `<h1>🛡️ ¿Es fiable esta tienda?</h1>
+    <p class="muted">Antes de pagar en una web que no conoces, pégala aquí. Revisamos la dirección, el precio, la forma de pago
+      y la antigüedad del dominio: las tiendas falsas aparecen cada Black Friday con precios imposibles y piden transferencia.</p>
+    <form id="scf" class="panel scform">
+      <label>Dirección de la web <input name="url" type="text" required placeholder="https://tienda-ejemplo.com/producto" value="${esc(pre.url || "")}"></label>
+      <div class="row">
+        <label>Nombre que dice tener la tienda <input name="store_name" type="text" placeholder="opcional" value="${esc(pre.store_name || "")}"></label>
+        <label>Precio (€) <input name="price" type="number" step="0.01" min="0" value="${pre.price ?? ""}"></label>
+      </div>
+      <label>Producto <select name="product_id"><option value="">— (para comparar con su precio oficial)</option>
+        ${products.map((p) => `<option value="${esc(p.id)}" ${p.id === pre.product_id ? "selected" : ""}>${esc(p.name || (p.brand + " " + p.model))}</option>`).join("")}</select></label>
+      <label>Texto de la página de pago <span class="muted small">(opcional, lo más útil: en la página del pago pulsa ⌘A y ⌘C y pégalo aquí; se analiza en tu ordenador)</span>
+        <textarea name="text" rows="5" placeholder="Transferencia SEPA · Beneficiario … · IBAN …"></textarea></label>
+      <label class="inline"><input type="checkbox" name="online" checked> Comprobar en internet (antigüedad del dominio y la propia web)</label>
+      <div><button class="primary">🛡️ Comprobar</button> <span class="error" id="scerr"></span></div>
+    </form>
+    <div id="scout"></div>
+    <details class="panel"><summary><b>Señales típicas de una tienda falsa</b></summary><ul class="small">
+      <li>Precio muy por debajo del oficial en un producto que nunca baja tanto (consolas, móviles, GPUs).</li>
+      <li>Sólo deja pagar por transferencia o Bizum, a nombre de una persona o con IBAN de otro país.</li>
+      <li>El nombre de la tienda no aparece en la dirección web; idiomas mezclados; dominio creado hace semanas.</li>
+      <li>Sin CIF, sin dirección física, contacto con Gmail/Hotmail, prisas («referencia obligatoria», «quedan 2»).</li>
+    </ul></details>`;
+  const f = $("#scf");
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const out = $("#scout"), btn = f.querySelector("button.primary");
+    btn.disabled = true; $("#scerr").textContent = "";
+    out.innerHTML = `<p class="muted">Comprobando…</p>`;
+    try {
+      const r = await api("/api/shopcheck", { method: "POST", body: { url: f.url.value.trim(), store_name: f.store_name.value.trim() || null,
+        price: f.price.value ? parseFloat(f.price.value) : null, product_id: f.product_id.value || null,
+        text: f.text.value, online: f.online.checked } });
+      out.innerHTML = renderShopCheck(r);
+      out.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) { out.innerHTML = ""; $("#scerr").textContent = err.message; }
+    btn.disabled = false;
+  };
+  if (pre.url) f.requestSubmit();
+}
+
 /* ------------------------------------------------------------------ cuándo comprar */
 
 async function viewWhen() {
@@ -761,7 +825,7 @@ async function viewSettings() {
 
 /* ------------------------------------------------------------------ router */
 
-const VIEWS = { profile: viewProfile, monitors: viewMonitors, ps5: viewPS5, when: viewWhen, promos: viewPromos, settings: viewSettings };
+const VIEWS = { profile: viewProfile, monitors: viewMonitors, ps5: viewPS5, shopcheck: viewShopCheck, when: viewWhen, promos: viewPromos, settings: viewSettings };
 
 function go(view) {
   state.view = view;

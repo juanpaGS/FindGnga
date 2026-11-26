@@ -25,6 +25,7 @@ HOSTS = {
     "PcComponentes": "https://www.pccomponentes.com/",
     "MediaMarkt": "https://www.mediamarkt.es/",
     "El Corte Inglés": "https://www.elcorteingles.es/",
+    "RDAP (antigüedad de dominios, detector de estafas)": "https://rdap.org/",
 }
 
 

@@ -148,3 +148,25 @@ tr.sus td { background: var(--bad-soft); }
 .muted-price { color: var(--muted); }
 .v-bad { color: var(--bad); }
 label.secondary-btn { border-radius: 10px; padding: 10px 16px; cursor: pointer; background: var(--surface-2); border: 1px solid var(--border); }
+
+/* ¿es fiable? */
+.sc { margin-top: 16px; border-width: 2px; }
+.sc-scam { border-color: var(--bad); background: var(--bad-soft); }
+.sc-doubt { border-color: var(--warn); background: var(--warn-soft); }
+.sc-ok { border-color: var(--good); background: var(--good-soft); }
+.sc-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
+.sc-label { font-size: 22px; font-weight: 800; }
+.sc-scam .sc-label { color: var(--bad); } .sc-doubt .sc-label { color: var(--warn); } .sc-ok .sc-label { color: var(--good); }
+.meter { height: 8px; border-radius: 99px; background: var(--surface-2); margin: 10px 0 6px; overflow: hidden; }
+.meter > div { height: 100%; background: linear-gradient(90deg, var(--good), var(--warn), var(--bad)); }
+.sigs { list-style: none; padding: 0; margin: 10px 0; }
+.sigs li { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.sigs li > span { flex: none; width: 22px; }
+textarea { width: 100%; font: inherit; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); box-sizing: border-box; }
+label.inline { display: flex; align-items: center; gap: 8px; }
+details.panel { margin-top: 16px; }
+.scform { display: grid; gap: 14px; }
+.scform label { display: block; }
+.scform input[type="text"], .scform select { width: 100%; box-sizing: border-box; }
+.scform label.inline { display: flex; }
+@media (max-width: 560px) { .scform .row { grid-template-columns: 1fr; } }

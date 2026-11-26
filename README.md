@@ -66,6 +66,31 @@ para lo que tú ya tienes en casa**.
 > como "sin comprobar". El programa no inventa precios ni códigos: los reales
 > entran al comprobarlos en vivo o al añadirlos.
 
+## 🛡️ ¿Es fiable esta tienda? (detector de estafas)
+
+Cada Black Friday aparecen webs con consolas a precios imposibles que piden **transferencia**.
+En la pestaña **🛡️ ¿Es fiable?** pega la dirección (y, si quieres, el texto de la página de pago)
+y FindGnga suma señales:
+
+| Señal | Ejemplo |
+|---|---|
+| Dirección web | imita a una marca (`amazon-ofertas.shop`), terminación de riesgo, nombre de la tienda distinto del dominio |
+| Precio | 42 % por debajo del precio oficial |
+| Forma de pago | sólo transferencia/SEPA, IBAN de otro país, cuenta a nombre de una persona |
+| Página | idiomas mezclados, sin CIF ni aviso legal, correo de Gmail, prisas |
+| En línea | dominio creado hace pocas semanas (consulta RDAP), idioma declarado de la web |
+
+Resultado: **✅ sin señales / ⚠️ dudosa / 🚩 probable estafa**, con qué hacer en cada caso.
+Las tiendas desconocidas que salen en la búsqueda automática pasan por el mismo detector (sin internet):
+si parecen falsas se marcan 🚩 y no cuentan como mejor precio. Desde la terminal:
+
+```bash
+python -m findgnga.cli checkshop https://tienda.com --price 349.99 --product ps5-slim-digital --name "Nombre"
+```
+
+El texto pegado se analiza en tu ordenador; sólo salen a internet el dominio (para su antigüedad) y la visita a la tienda.
+Las tiendas fiables extra se añaden en `data/stores.json` → `trusted_domains`.
+
 ## Instalar y arrancar (en cualquier ordenador)
 
 Sólo necesitas **Python 3.10 o superior** e internet.

@@ -243,7 +243,7 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
         async with new_client(timeout=12) as client:
             await verify.verify_top(client, merged, int(cfg["verify_top"]))
     priced = _price_all(product, category, merged)
-    verify.assess(priced)
+    verify.assess(priced, ref=product.get("msrp") or product.get("ref_price"))
     priced.sort(key=sort_key)
     if not dry_run:
         save(product_id, priced)
