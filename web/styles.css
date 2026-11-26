@@ -180,3 +180,47 @@ details.panel { margin-top: 16px; }
 .bestline .full { flex-basis: 100%; }
 a.go.buy { background: var(--good); font-weight: 700; }
 a.go.ghosty { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+
+/* v0.4: Mi escritorio 3D y accesorios */
+main:has(.desk-layout) { max-width: 1280px; }
+.desk-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; margin-top: 12px; align-items: start; }
+.desk3d { position: relative; height: min(68vh, 620px); min-height: 380px; border-radius: var(--radius); overflow: hidden;
+  border: 1px solid var(--border); background: radial-gradient(120% 90% at 50% 0%, var(--surface) 0%, var(--surface-2) 100%); }
+.desk3d canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+.desk3d-empty { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); padding: 10px 16px; border-radius: 12px;
+  background: var(--surface); border: 1px dashed var(--border); text-align: center; font-size: 14px; color: var(--muted); pointer-events: none; z-index: 1; }
+.desk3d-help { position: absolute; bottom: 8px; left: 12px; color: var(--muted); pointer-events: none; }
+.desk3d-tip { position: absolute; pointer-events: none; padding: 3px 8px; border-radius: 8px; background: var(--text); color: var(--bg);
+  font-size: 12px; opacity: 0; transition: opacity .12s; white-space: nowrap; }
+.desk3d-tip.on { opacity: .92; }
+.desk3d-fallback { padding: 40px 20px; text-align: center; color: var(--muted); }
+.desk-side { position: sticky; top: 70px; max-height: calc(100vh - 90px); overflow: auto; }
+.type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.type-btn { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; border: 1.5px solid var(--border);
+  background: var(--surface); cursor: pointer; font-size: 14px; text-align: left; }
+.type-btn span { font-size: 18px; }
+.type-btn:hover { border-color: var(--accent); }
+.type-btn.sel { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.add-form { margin-top: 12px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
+.add-form label { display: block; margin: 4px 0; }
+.add-form input[type="text"] { margin-top: 4px; }
+.guess { margin: 6px 0; min-height: 1em; }
+.spec-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 8px; margin: 6px 0; }
+.spec-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 6px 0; align-items: center; }
+.spec-checks label.inline { margin: 0; }
+.desk-list { list-style: none; padding: 0; margin: 6px 0; }
+.desk-list li { display: grid; grid-template-columns: 28px 1fr auto auto; gap: 6px; align-items: center; padding: 8px 6px;
+  border-radius: 10px; border: 1px solid transparent; cursor: pointer; }
+.desk-list li:hover { background: var(--surface-2); }
+.desk-list li.sel { border-color: var(--accent); background: var(--accent-soft); }
+.desk-list li .em { font-size: 20px; }
+.desk-list li button { padding: 4px 8px; }
+.acc-nav .chip { text-decoration: none; color: var(--text); font-size: 14px; }
+.acc-why { margin: 14px 0 -6px; color: var(--muted); }
+.result.acc p { margin: 6px 0; }
+@media (max-width: 900px) {
+  .desk-layout { grid-template-columns: 1fr; }
+  .desk3d { height: 56vh; min-height: 320px; }
+  .desk-side { position: static; max-height: none; }
+}
+.desk-list li.plain { display: block; cursor: default; } .desk-list li.plain:hover { background: none; }

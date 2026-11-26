@@ -11,6 +11,8 @@
   <header class="topbar">
     <div class="brand">🎯 <b>FindGnga</b> <span class="tag">Black Friday · España</span></div>
     <nav class="tabs" id="tabs">
+      <button data-view="desk">🪑 Mi escritorio</button>
+      <button data-view="accessories">🧩 Accesorios</button>
       <button data-view="profile">🧑‍💻 Mi setup</button>
       <button data-view="monitors">🖥️ Monitores</button>
       <button data-view="ps5">🎮 PS5</button>
@@ -44,6 +46,11 @@
     </form>
   </dialog>
 
+  <script type="importmap">
+    { "imports": { "three": "/static/vendor/three/three.module.min.js", "three/addons/": "/static/vendor/three/" } }
+  </script>
   <script src="/static/app.js"></script>
+  <script src="/static/desk-view.js"></script>
+  <script type="module" src="/static/desk3d.js"></script>
 </body>
 </html>

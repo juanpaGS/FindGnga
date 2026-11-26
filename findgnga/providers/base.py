@@ -108,6 +108,8 @@ def matcher(product: dict[str, Any], reject_accessories: bool = True):
 
 def price_band(product: dict[str, Any], category: str) -> tuple[float, float]:
     ref = float(product.get("msrp") or product["ref_price"])
+    if category == "accessory":  # precios de referencia orientativos y productos genéricos: banda más ancha
+        return ref * 0.35, ref * 2.2
     return (ref * 0.55, ref * 1.6) if category == "console" else (ref * 0.45, ref * 1.8)
 
 

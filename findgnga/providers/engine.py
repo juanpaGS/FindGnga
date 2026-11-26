@@ -52,7 +52,7 @@ _cache: dict[str, tuple[float, dict[str, Any]]] = {}
 
 
 def find_product(product_id: str) -> tuple[dict[str, Any], str] | None:
-    for name, cat in (("monitors", "monitor"), ("consoles", "console")):
+    for name, cat in (("monitors", "monitor"), ("consoles", "console"), ("accessories", "accessory")):
         for p in storage.load_catalog(name):
             if p["id"] == product_id:
                 return p, cat

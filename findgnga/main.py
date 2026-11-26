@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from . import backup as backup_mod
 from . import doctor as doctor_mod
 from . import predict as predict_mod
+from . import desk as desk_mod
 from . import search, shopcheck, storage
 from . import settings as settings_mod
 from .pricing import deals, live
@@ -95,7 +96,7 @@ def get_profile() -> dict[str, Any]:
 
 
 def _product_exists(pid: str) -> bool:
-    return any(p["id"] == pid for name in ("monitors", "consoles") for p in storage.load_catalog(name))
+    return any(p["id"] == pid for name in ("monitors", "consoles", "accessories") for p in storage.load_catalog(name))
 
 
 def _save_offer(data: dict[str, Any], source: str) -> dict[str, Any]:
@@ -121,6 +122,7 @@ def catalog() -> dict[str, Any]:
     return {
         "monitors": storage.load_catalog("monitors"),
         "consoles": storage.load_catalog("consoles"),
+        "accessories": storage.load_catalog("accessories"),
         "stores": storage.load_catalog("stores"),
     }
 
@@ -314,6 +316,48 @@ async def api_shopcheck(req: ShopCheckIn) -> dict[str, Any]:
     """¿Es fiable esta tienda? Suma señales de dirección, precio, forma de pago y antigüedad del dominio."""
     return await shopcheck.check(req.url.strip(), (req.store_name or "").strip() or None, req.price,
                                  req.product_id, req.text, req.online)
+
+
+class DeskItem(BaseModel):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], max_length=40)
+    type: Literal[desk_mod.ITEM_TYPES]  # type: ignore[valid-type]
+    model: str | None = Field(None, max_length=120)
+    catalog_id: str | None = Field(None, max_length=80)
+    specs: dict[str, Any] = {}
+
+
+class Desk(BaseModel):
+    items: list[DeskItem] = Field([], max_length=40)
+
+
+class IdentifyIn(BaseModel):
+    type: Literal[desk_mod.ITEM_TYPES]  # type: ignore[valid-type]
+    model: str = Field("", max_length=120)
+
+
+@app.get("/api/desk")
+def read_desk() -> dict[str, Any]:
+    return desk_mod.read_desk()
+
+
+@app.put("/api/desk")
+def write_desk(desk: Desk) -> dict[str, Any]:
+    """Guarda el escritorio y actualiza los dispositivos del perfil (la búsqueda se adapta a él)."""
+    data = desk.model_dump(mode="json")
+    storage.write_user("desk", data)
+    profile = desk_mod.sync_profile(data)
+    return {**data, "profile": profile}
+
+
+@app.post("/api/desk/identify")
+def identify_item(req: IdentifyIn) -> dict[str, Any]:
+    return desk_mod.identify(req.type, req.model)
+
+
+@app.get("/api/accessories")
+def api_accessories() -> dict[str, Any]:
+    """Accesorios, monitores y mejoras compatibles con tu escritorio, con el mejor precio conocido."""
+    return desk_mod.recommend()
 
 
 @app.get("/api/calendar")

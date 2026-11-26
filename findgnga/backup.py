@@ -1,4 +1,4 @@
-"""Copia de seguridad de tus datos (perfil, ajustes, precios, histórico, cupones)
+"""Copia de seguridad de tus datos (perfil, ajustes, precios, histórico, cupones, escritorio)
 para llevarlos a otro ordenador. data/user no se sube a git a propósito."""
 
 from __future__ import annotations
@@ -8,7 +8,7 @@ from typing import Any
 
 from . import storage
 
-FILES = ("profile", "settings", "offers", "price_history", "promos")
+FILES = ("profile", "settings", "offers", "price_history", "promos", "desk")
 FORMAT = 1
 
 

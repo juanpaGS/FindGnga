@@ -869,6 +869,7 @@ async function viewSettings() {
 const VIEWS = { profile: viewProfile, monitors: viewMonitors, ps5: viewPS5, shopcheck: viewShopCheck, when: viewWhen, promos: viewPromos, settings: viewSettings };
 
 function go(view) {
+  if (state.desk3d) { state.desk3d.dispose(); state.desk3d = null; }
   state.view = view;
   if (view === "monitors") state.monQuery = null;
   location.hash = view;
@@ -887,5 +888,6 @@ document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => go(b.
     return;
   }
   const hash = location.hash.slice(1);
-  go(VIEWS[hash] && (state.profile.devices?.length || hash === "settings") ? hash : "profile");
+  const free = ["settings", "desk", "accessories"];
+  go(VIEWS[hash] && (state.profile.devices?.length || free.includes(hash)) ? hash : "desk");
 })();

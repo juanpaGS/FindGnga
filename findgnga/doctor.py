@@ -54,7 +54,7 @@ def local_checks() -> list[dict[str, Any]]:
     except OSError as exc:
         out.append(_check("Carpeta de datos", False, str(exc), "Revisa permisos o define FINDGNGA_USER_DIR"))
     bad = []
-    for name in ("monitors", "consoles", "stores", "promos", "events"):
+    for name in ("monitors", "consoles", "accessories", "stores", "promos", "events"):
         try:
             storage.load_catalog_raw(name)
         except (OSError, json.JSONDecodeError) as exc:
