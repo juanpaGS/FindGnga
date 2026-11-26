@@ -8,7 +8,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 - Python ≥3.10 + FastAPI (`findgnga/`), web sin build (`web/`: index.html, app.js, desk-view.js, desk3d.js, styles.css).
 - 3D: Three.js r160 copiado en `web/vendor/three/` (import map en index.html; sin npm ni CDN).
 - `./run.sh` (macOS/Linux) · `run.bat` (Windows) → http://127.0.0.1:8000
-- Tests: `.venv/bin/python -m pytest -q` (84 tests). CI: `.github/workflows/tests.yml`.
+- Tests: `.venv/bin/python -m pytest -q` (88 tests). CI: `.github/workflows/tests.yml`.
 - CLI: `python -m findgnga.cli refresh|diagnose|doctor|export|import`.
 
 ## Mapa del código
@@ -19,6 +19,10 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
   Fuentes: serpapi (Google Shopping, Amazon, eBay, Idealo vía Google = solo referencia; requiere key), chollometro,
   idealo (403), stores, watched. `resolve_direct_links` cambia enlaces de Google por la ficha de la tienda
   (google_immersive_product, `resolve_links` búsquedas/clic); `verify` marca enlaces caducados (`gone`).
+- Sin SerpApi: `serpapi._get` guarda respuestas en `data/user/serpapi_cache.json` (12 h; con force 1 h; sin api_key),
+  cuenta consumo del mes (`serpapi_usage`) y si el plan se agota (`QuotaError`) salta SerpApi hasta el mes siguiente
+  (force reintenta). `providers/pccomponentes.py` lee su JSON `/api/articles/search` (stock, envío, vendedor/marketplace).
+  Amazon da desafío antirobots (en SKIP, no se salta); Fnac/ECI/Worten 403. Teclados con distribución extranjera se rechazan.
 - `shopcheck.py` detector de tiendas falsas (dominio, precio, pago, IBAN, RDAP); lo usa `verify.assess` y la pestaña 🛡️.
 - `desk.py` Mi escritorio: `identify` (modelo → puertos/chip/pulgadas), `sync_profile` (el escritorio
   alimenta los dispositivos del perfil, ids `desk-*`), `recommend` (accesorios de `data/accessories.json`,

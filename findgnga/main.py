@@ -18,7 +18,7 @@ from . import desk as desk_mod
 from . import search, shopcheck, storage
 from . import settings as settings_mod
 from .pricing import deals, live
-from .providers import engine
+from .providers import engine, serpapi
 
 app = FastAPI(title="FindGnga", description="Buscador de gangas de tecnología en España")
 WEB_DIR = storage.ROOT / "web"
@@ -218,6 +218,7 @@ class SettingsIn(BaseModel):
     include_used: bool | None = None
     verify_top: int | None = Field(None, ge=0, le=20)
     resolve_links: int | None = Field(None, ge=0, le=10)
+    serpapi_cache_hours: float | None = Field(None, ge=0, le=72)
 
 
 class TargetIn(BaseModel):
@@ -226,13 +227,14 @@ class TargetIn(BaseModel):
 
 @app.get("/api/settings")
 def read_settings() -> dict[str, Any]:
-    return {**settings_mod.public(settings_mod.get()), "provider_info": engine.PROVIDERS}
+    return {**settings_mod.public(settings_mod.get()), "provider_info": engine.PROVIDERS, "serpapi_usage": serpapi.usage()}
 
 
 @app.put("/api/settings")
 def write_settings(s: SettingsIn) -> dict[str, Any]:
     changes = {k: v for k, v in s.model_dump().items() if v is not None}
-    return {**settings_mod.public(settings_mod.update(changes)), "provider_info": engine.PROVIDERS}
+    return {**settings_mod.public(settings_mod.update(changes)), "provider_info": engine.PROVIDERS,
+            "serpapi_usage": serpapi.usage()}
 
 
 @app.put("/api/targets/{product_id}")

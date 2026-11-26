@@ -15,6 +15,7 @@ DEFAULTS: dict[str, Any] = {
     "verify_top": 6,  # ofertas más baratas que se comprueban en la propia tienda (0 = no verificar)
     "resolve_links": 3,  # productos de Google Shopping cuya ficha se abre para tener el enlace directo (1 búsqueda c/u)
     "max_offer_age_days": 3,
+    "serpapi_cache_hours": 12,  # una búsqueda igual en ese plazo no gasta consulta (con «Buscar ahora»: 1 h)
     "include_used": False,
     "targets": {},  # product_id -> precio objetivo (alerta)
 }

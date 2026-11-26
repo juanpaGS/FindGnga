@@ -6,12 +6,17 @@ todas las tiendas españolas con precio, tienda, envío y enlace.
 
 from __future__ import annotations
 
+import contextvars
+import hashlib
+import json
 import re
+import time
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 
+from .. import storage
 from .base import parse_shipping
 
 ENDPOINT = "https://serpapi.com/search.json"
@@ -51,17 +56,8 @@ def parse(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 async def search(client: httpx.AsyncClient, query: str, api_key: str) -> list[dict[str, Any]]:
-    params = {"engine": "google_shopping", "q": query, "gl": "es", "hl": "es",
-              "google_domain": "google.es", "location": "Spain", "api_key": api_key}
-    resp = await client.get(ENDPOINT, params=params)
-    if resp.status_code == 401:
-        raise PermissionError("API key de SerpApi no válida")
-    resp.raise_for_status()
-    data = resp.json()
-    if data.get("error"):
-        if "hasn't returned any results" in data["error"]:
-            return []
-        raise RuntimeError(data["error"])
+    data = await _get(client, {"engine": "google_shopping", "q": query, "gl": "es", "hl": "es",
+                               "google_domain": "google.es", "location": "Spain", "api_key": api_key})
     return parse(data)
 
 
@@ -108,14 +104,78 @@ def parse_ebay(data: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+# ---------------------------------------------------------------- caché y consumo
+
+class QuotaError(RuntimeError):
+    """El plan de SerpApi no tiene más búsquedas este mes."""
+
+
+QUOTA_HINTS = ("run out of searches", "plan searches", "out of searches", "searches per month")
+# «Buscar ahora» (force) acepta respuestas guardadas de hasta 1 h; el resto, las horas de Ajustes
+fresh_only: contextvars.ContextVar[bool] = contextvars.ContextVar("serpapi_fresh_only", default=False)
+
+
+def _cache_key(params: dict[str, Any]) -> str:
+    clean = {k: v for k, v in sorted(params.items()) if k != "api_key"}
+    return hashlib.sha1(json.dumps(clean, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:20]
+
+
+def _ttl_hours() -> float:
+    from .. import settings as settings_mod
+    hours = float(settings_mod.get().get("serpapi_cache_hours", 12) or 0)
+    return min(hours, 1.0) if fresh_only.get() else hours
+
+
+def usage() -> dict[str, Any]:
+    """Consultas gastadas y ahorradas por la caché este mes (contadas por FindGnga)."""
+    month = time.strftime("%Y-%m")
+    u = storage.read_user("serpapi_usage", {})
+    if u.get("month") != month:
+        u = {"month": month, "used": 0, "saved": 0, "quota_out": False}
+    return u
+
+
+def _count(kind: str, quota_out: bool | None = None) -> None:
+    u = usage()
+    if kind:
+        u[kind] = u.get(kind, 0) + 1
+    if quota_out is not None:
+        u["quota_out"] = quota_out
+    storage.write_user("serpapi_usage", u)
+
+
 async def _get(client: httpx.AsyncClient, params: dict[str, Any]) -> dict[str, Any]:
+    key = _cache_key(params)
+    cache = storage.read_user("serpapi_cache", {})
+    hit = cache.get(key)
+    ttl = _ttl_hours() * 3600
+    if hit and time.time() - hit["t"] < ttl:
+        _count("saved")
+        return hit["data"]
     resp = await client.get(ENDPOINT, params=params)
     if resp.status_code == 401:
         raise PermissionError("API key de SerpApi no válida")
+    if resp.status_code == 429:
+        _count("", quota_out=True)
+        raise QuotaError("SerpApi: sin búsquedas disponibles en tu plan")
+    data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else None
+    err = (data or {}).get("error") or ""
+    if any(h in err.lower() for h in QUOTA_HINTS):
+        _count("", quota_out=True)
+        raise QuotaError("SerpApi: se han acabado las búsquedas de este mes")
     resp.raise_for_status()
-    data = resp.json()
-    if data.get("error") and "hasn't returned any results" not in data["error"]:
-        raise RuntimeError(data["error"])
+    if data is None:
+        raise RuntimeError("SerpApi devolvió una respuesta que no es JSON")
+    if err and "hasn't returned any results" not in err:
+        raise RuntimeError(err)
+    _count("used", quota_out=False)
+    # se guardan las respuestas de las últimas 48 h como mucho (máx. 300)
+    now = time.time()
+    cache = {k: v for k, v in cache.items() if now - v["t"] < 48 * 3600}
+    cache[key] = {"t": now, "data": data}
+    if len(cache) > 300:
+        cache = dict(sorted(cache.items(), key=lambda kv: kv[1]["t"])[-300:])
+    storage.write_user("serpapi_cache", cache)
     return data
 
 

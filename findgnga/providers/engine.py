@@ -118,6 +118,13 @@ async def collect(product: dict[str, Any], cfg: dict[str, Any], snapshot_dir: Pa
         if hooks:
             client.event_hooks = hooks
         tasks = []
+        if cfg.get("serpapi_key") and serpapi.usage().get("quota_out") and not serpapi.fresh_only.get():
+            # el plan está agotado: no se gasta tiempo en pedir; las tiendas directas y Chollometro siguen
+            for pid in ("serpapi", "serpapi_amazon", "serpapi_ebay", "serpapi_idealo"):
+                if pid in enabled:
+                    status[pid] = {"ok": False, "raw": 0, "skipped": True, "error": "Sin búsquedas de SerpApi este mes: "
+                                   "se usan las tiendas directas (pulsa «Buscar precio ahora» para reintentar)"}
+            enabled -= {"serpapi", "serpapi_amazon", "serpapi_ebay", "serpapi_idealo"}
         if "serpapi" in enabled and cfg.get("serpapi_key"):
             tasks.append(_timed("serpapi", serpapi.search(client, query, cfg["serpapi_key"])))
         for pid, fn in (("serpapi_amazon", serpapi.search_amazon), ("serpapi_ebay", serpapi.search_ebay),
@@ -303,7 +310,11 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
     if cached and not force and not dry_run and time.time() - cached[0] < CACHE_SECONDS:
         return {**cached[1], "cached": True}
     cfg = settings_mod.get()
-    listings, status = await collect(product, cfg, snapshot_dir, only)
+    token = serpapi.fresh_only.set(force)
+    try:
+        listings, status = await collect(product, cfg, snapshot_dir, only)
+    finally:
+        serpapi.fresh_only.reset(token)
     accepted, rejected = filter_listings(product, category, listings, status)
     references = [a for a in accepted if a.get("reference")]
     accepted = [a for a in accepted if not a.get("reference")]

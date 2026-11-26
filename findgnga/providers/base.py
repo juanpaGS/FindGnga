@@ -73,6 +73,10 @@ MODDED_RE = re.compile(r"\b(modded|modificad[ao]s?|jailbreak|jailbroken|homebrew
 BUNDLE_RE = re.compile(r"\b(pack|bundle|mandos?|juegos?|incluye|regalo)\b")
 
 
+FOREIGN_LAYOUT = (r"\b(layout|qwerty|teclado|teclados) (us|uk|pt|fr|de|it|nor|sui|latam|nordic|ingles|portugues|frances|aleman|italiano)\b"
+                  r"|\b(portugues|frances|aleman|italiano|azerty|qwertz|nordico|suizo)\b")
+
+
 def is_bundle(title: str) -> bool:
     return bool(BUNDLE_RE.search(norm(title))) or "+" in (title or "")
 
@@ -89,6 +93,8 @@ def matcher(product: dict[str, Any], reject_accessories: bool = True):
     none_re = [re.compile(p) for p in rules.get("none", [])]
     if reject_accessories:
         none_re.append(re.compile(ACCESSORY))
+    if product.get("kind") == "keyboard":  # en España queremos la distribución española
+        none_re.append(re.compile(FOREIGN_LAYOUT))
 
     def check(title: str) -> tuple[bool, str]:
         n, c = norm(title), compact(title)

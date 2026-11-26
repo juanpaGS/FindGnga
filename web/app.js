@@ -799,7 +799,10 @@ async function viewSettings() {
         <label><input type="checkbox" id="used" ${st.include_used ? "checked" : ""}> Contar reacondicionados/segunda mano en el mejor precio</label>
         <label>Verificar en la propia tienda las <input type="number" id="vtop" min="0" max="20" value="${st.verify_top ?? 6}" style="width:70px;display:inline-block"> ofertas más baratas (0 = no)</label>
         <label>Enlaces directos: abrir la ficha de los <input type="number" id="rlinks" min="0" max="10" value="${st.resolve_links ?? 3}" style="width:70px;display:inline-block"> productos más baratos de Google Shopping (1 búsqueda de SerpApi cada uno; 0 = no)</label>
-        <p class="small muted">Cada clic en «Buscar precio ahora» gasta unas <b id="cost">${serpCost(st)}</b> búsquedas de SerpApi.</p>
+        <label>Reutilizar búsquedas de SerpApi durante <input type="number" id="cacheh" min="0" max="72" value="${st.serpapi_cache_hours ?? 12}" style="width:70px;display:inline-block"> horas (0 = nunca; «Buscar precio ahora» usa como mucho 1 h)</label>
+        <p class="small muted">Cada clic en «Buscar precio ahora» gasta unas <b id="cost">${serpCost(st)}</b> búsquedas de SerpApi.
+          ${st.serpapi_usage ? `Este mes: <b>${st.serpapi_usage.used}</b> gastadas y <b>${st.serpapi_usage.saved}</b> ahorradas gracias a la caché.` : ""}</p>
+        ${st.serpapi_usage?.quota_out ? `<div class="notice">⚠️ Se han acabado las búsquedas de SerpApi de este mes. FindGnga sigue buscando en PcComponentes, MediaMarkt, Chollometro y tus URLs vigiladas.</div>` : ""}
       </div><p class="error" id="serr"></p></div>
     <div class="panel" style="margin-top:12px"><h3>🩺 Diagnóstico</h3>
       <p class="small muted">Prueba cada fuente con «PS5 Slim Digital» sin guardar nada y guarda el HTML recibido en <code>data/user/snapshots/</code> para poder afinar los lectores.</p>
@@ -815,6 +818,7 @@ async function viewSettings() {
         <label class="secondary-btn">⬆️ Restaurar copia<input type="file" id="import" accept="application/json" hidden></label>
       </div><p class="small" id="bkOut"></p></div>`;
   $("#vtop").onchange = (e) => save({ verify_top: Math.max(0, Math.min(20, +e.target.value || 0)) });
+  $("#cacheh").onchange = (e) => save({ serpapi_cache_hours: Math.max(0, Math.min(72, +e.target.value || 0)) });
   $("#rlinks").onchange = (e) => save({ resolve_links: Math.max(0, Math.min(10, +e.target.value || 0)) });
   $("#doctor").onclick = async (e) => {
     e.target.disabled = true; $("#docOut").innerHTML = `<p class="muted">Comprobando…</p>`;
