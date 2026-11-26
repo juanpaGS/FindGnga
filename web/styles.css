@@ -117,3 +117,27 @@ dialog label { display: block; margin: 10px 0; font-size: 14px; }
 }
 .result-head > div:first-child { flex: 1 1 320px; min-width: 0; }
 .result-head > .price { flex: 0 0 auto; }
+
+/* v0.2: búsqueda en vivo y predicción */
+a.go { display: inline-block; margin-top: 6px; padding: 6px 12px; border-radius: 10px; background: var(--accent); color: #fff;
+  font-weight: 600; text-decoration: none; font-size: 14px; white-space: nowrap; }
+.live { margin-top: 10px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--border); }
+.live-head { margin-bottom: 6px; }
+.pvs { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.pv { font-size: 12px; padding: 2px 8px; border-radius: 99px; }
+.pv.ok { background: var(--good-soft); color: var(--good); } .pv.err { background: var(--bad-soft); color: var(--bad); }
+.pv.off { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+.scroll-x { overflow-x: auto; max-width: 100%; }
+tr.dim td { opacity: .55; }
+.timeline { display: grid; gap: 6px; margin: 10px 0; }
+.tl-row { display: grid; grid-template-columns: minmax(110px, 200px) 1fr minmax(110px, auto); gap: 10px; align-items: center; font-size: 13px; }
+.tl-row.act .tl-name { color: var(--accent); font-weight: 700; }
+.tl-track { position: relative; height: 10px; background: var(--surface); border-radius: 99px; border: 1px solid var(--border); }
+.tl-range { position: absolute; top: 0; bottom: 0; background: var(--good); border-radius: 99px; }
+.tl-dot { position: absolute; top: -4px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+.tl-val { text-align: right; white-space: nowrap; }
+.plan { margin-top: 8px; padding: 10px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; }
+label.src { display: block; padding: 8px 0; border-bottom: 1px solid var(--border); }
+@media (max-width: 600px) {
+  .tl-row { grid-template-columns: 1fr; gap: 2px; } .tl-val { text-align: left; }
+}

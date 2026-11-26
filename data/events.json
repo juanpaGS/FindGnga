@@ -1,0 +1,40 @@
+{
+  "_info": "Calendario de campañas de rebajas en España y descuento TÍPICO por categoría (fracción: 0.15 = 15 %). Son patrones de años anteriores, no promesas: edítalos con lo que observes. reliability = probabilidad de que la campaña traiga rebaja real a esa categoría. Fechas de 2027 estimadas a partir de años anteriores.",
+  "drift_per_month": {
+    "monitor": -0.008,
+    "console": 0.0
+  },
+  "category_notes": {
+    "monitor": "Los monitores se abaratan poco a poco (~1 %/mes) y caen más cuando sale el modelo sucesor (CES en enero).",
+    "console": "En 2025 y 2026 Sony SUBIÓ el PVP de PS5: no cuentes con que baje sola; las rebajas llegan en campañas oficiales (Black Friday, Days of Play)."
+  },
+  "unscheduled": [
+    {"id": "dias-sin-iva", "name": "Días sin IVA (MediaMarkt y otras)", "discount": {"monitor": [0.10, 0.17], "console": [0.10, 0.17]},
+     "reliability": 0.6, "every_days": 75,
+     "note": "Sin fecha fija: aparecen varias veces al año y se anuncian con pocos días. Descuento real ≈ 17,4 %."}
+  ],
+  "events": [
+    {"id": "black-friday-2026", "name": "Black Friday 2026", "start": "2026-11-20", "end": "2026-11-29",
+     "discount": {"monitor": [0.15, 0.30], "console": [0.08, 0.20]}, "reliability": 0.9},
+    {"id": "cyber-monday-2026", "name": "Cyber Monday 2026", "start": "2026-11-30", "end": "2026-12-01",
+     "discount": {"monitor": [0.12, 0.25], "console": [0.05, 0.15]}, "reliability": 0.8},
+    {"id": "navidad-2026", "name": "Ofertas de Navidad", "start": "2026-12-02", "end": "2026-12-24",
+     "discount": {"monitor": [0.05, 0.12], "console": [0.0, 0.08]}, "reliability": 0.5},
+    {"id": "rebajas-invierno-2027", "name": "Rebajas de enero", "start": "2027-01-07", "end": "2027-02-28",
+     "discount": {"monitor": [0.08, 0.18], "console": [0.0, 0.10]}, "reliability": 0.7},
+    {"id": "post-ces-2027", "name": "Liquidación modelos 2026 (tras CES)", "start": "2027-02-01", "end": "2027-04-30",
+     "discount": {"monitor": [0.08, 0.20], "console": [0.0, 0.0]}, "reliability": 0.5},
+    {"id": "amazon-primavera-2027", "name": "Fiesta de Ofertas de Primavera (Amazon)", "start": "2027-03-23", "end": "2027-03-29",
+     "discount": {"monitor": [0.10, 0.20], "console": [0.0, 0.10]}, "reliability": 0.6},
+    {"id": "days-of-play-2027", "name": "Days of Play (PlayStation)", "start": "2027-05-28", "end": "2027-06-11",
+     "discount": {"monitor": [0.0, 0.0], "console": [0.08, 0.18]}, "reliability": 0.7},
+    {"id": "prime-day-2027", "name": "Prime Day", "start": "2027-07-13", "end": "2027-07-16",
+     "discount": {"monitor": [0.15, 0.25], "console": [0.05, 0.15]}, "reliability": 0.8},
+    {"id": "vuelta-cole-2027", "name": "Vuelta al cole", "start": "2027-08-25", "end": "2027-09-15",
+     "discount": {"monitor": [0.05, 0.12], "console": [0.0, 0.05]}, "reliability": 0.5},
+    {"id": "prime-big-deal-2027", "name": "Prime Big Deal Days", "start": "2027-10-06", "end": "2027-10-08",
+     "discount": {"monitor": [0.12, 0.22], "console": [0.05, 0.12]}, "reliability": 0.7},
+    {"id": "black-friday-2027", "name": "Black Friday 2027", "start": "2027-11-19", "end": "2027-11-28",
+     "discount": {"monitor": [0.15, 0.30], "console": [0.08, 0.20]}, "reliability": 0.9}
+  ]
+}

@@ -3,24 +3,63 @@
   "items": [
     {
       "id": "ps5-slim-digital",
-      "name": "PS5 Slim Digital Edition", "family": "ps5", "edition": "digital",
-      "msrp": 599.99, "ref_price": 599.99, "storage_gb": 1000, "disc_drive": false,
+      "name": "PS5 Slim Digital Edition",
+      "family": "ps5",
+      "edition": "digital",
+      "msrp": 599.99,
+      "ref_price": 599.99,
+      "storage_gb": 1000,
+      "disc_drive": false,
       "search_query": "PS5 Slim Digital",
-      "notes": "Sin lector. Se le puede añadir el lector de discos oficial más adelante (se vende aparte)."
+      "notes": "Sin lector. Se le puede añadir el lector de discos oficial más adelante (se vende aparte).",
+      "match": {
+        "all": [
+          "\\b(ps5|playstation ?5)\\b",
+          "\\bdigital\\b"
+        ],
+        "none": [
+          "\\b(ps5|playstation ?5) pro\\b"
+        ]
+      }
     },
     {
       "id": "ps5-slim-standard",
-      "name": "PS5 Slim Standard (con lector)", "family": "ps5", "edition": "standard",
-      "msrp": 649.99, "ref_price": 649.99, "storage_gb": 1000, "disc_drive": true,
+      "name": "PS5 Slim Standard (con lector)",
+      "family": "ps5",
+      "edition": "standard",
+      "msrp": 649.99,
+      "ref_price": 649.99,
+      "storage_gb": 1000,
+      "disc_drive": true,
       "search_query": "PS5 Slim lector",
-      "notes": "Con lector: juegos físicos de segunda mano, que suelen ser más baratos."
+      "notes": "Con lector: juegos físicos de segunda mano, que suelen ser más baratos.",
+      "match": {
+        "all": [
+          "\\b(ps5|playstation ?5)\\b"
+        ],
+        "none": [
+          "\\b(ps5|playstation ?5) pro\\b",
+          "\\bdigital\\b"
+        ]
+      }
     },
     {
       "id": "ps5-pro",
-      "name": "PS5 Pro", "family": "ps5", "edition": "pro",
-      "msrp": 899.99, "ref_price": 899.99, "storage_gb": 2000, "disc_drive": false,
+      "name": "PS5 Pro",
+      "family": "ps5",
+      "edition": "pro",
+      "msrp": 899.99,
+      "ref_price": 899.99,
+      "storage_gb": 2000,
+      "disc_drive": false,
       "search_query": "PS5 Pro",
-      "notes": "Más potencia (PSSR, mejor ray tracing). Ha habido rotura de stock en 2026: desconfía de reventas muy por encima del PVP."
+      "notes": "Más potencia (PSSR, mejor ray tracing). Ha habido rotura de stock en 2026: desconfía de reventas muy por encima del PVP.",
+      "match": {
+        "all": [
+          "\\b(ps5|playstation ?5) pro\\b"
+        ],
+        "none": []
+      }
     }
   ]
 }

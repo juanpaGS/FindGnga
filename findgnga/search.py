@@ -6,6 +6,7 @@ from datetime import date
 from typing import Any
 from urllib.parse import quote_plus
 
+from . import settings as settings_mod
 from . import storage
 from .pricing.core import best_price
 from .scoring.monitors import evaluate
@@ -47,7 +48,12 @@ def _price_history(product_id: str) -> dict[str, Any] | None:
 
 def _priced(product: dict[str, Any], category: str, today: date | None) -> dict[str, Any]:
     prod = {**product, "category": category}
-    pricing = best_price(prod, user_offers(), stores_by_id(), user_promos(), today)
+    cfg = settings_mod.get()
+    pricing = best_price(prod, user_offers(), stores_by_id(), user_promos(), today,
+                         max_age_days=cfg["max_offer_age_days"], include_used=cfg["include_used"])
+    target = cfg.get("targets", {}).get(product["id"])
+    pricing["target"] = target
+    pricing["alert"] = bool(target and not pricing["estimated"] and pricing["final_price"] <= float(target))
     pricing["history"] = _price_history(product["id"])
     return pricing
 

@@ -28,14 +28,38 @@ para lo que tú ya tienes en casa**.
    PS5** que además sirva para tus otros dispositivos.
 4. **Precio final = precio + envío − mejor cupón válido** (tienda, gasto
    mínimo, caducidad, categoría). Las reglas de envío están en `data/stores.json`.
-5. **Precios reales**: en cada producto, *➕ Añadir / comprobar precio*:
+5. **🔎 Buscar precio ahora** (búsqueda automática, como Idealo/Chollometro):
+   lanza en paralelo varias fuentes, se queda sólo con resultados que son *ese*
+   producto (modelo exacto, sin accesorios ni otras versiones, precio razonable;
+   en PS5 acepta packs y los marca) y te da cada oferta con **enlace directo**
+   a la tienda. Fuentes (activables en *⚙️ Ajustes*):
+   | Fuente | Clave | Estado |
+   |---|---|---|
+   | Google Shopping vía [SerpApi](https://serpapi.com) | API key gratuita | la más fiable y completa |
+   | Chollometro (chollos + códigos) | no | beta |
+   | Idealo | no | beta (puede bloquear) |
+   | Tiendas directamente (Amazon, PcComponentes, MediaMarkt…) | no | beta (lee datos estructurados) |
+   | URLs vigiladas (las que guardaste) | no | estable |
+
+   Las ofertas automáticas se **reemplazan** en cada búsqueda y los precios
+   **caducan** (3 días por defecto): lo agotado o lo que ha subido deja de contar solo.
+   Cada búsqueda alimenta el **histórico**.
+6. **📈 ¿Comprar ya o esperar?** (pestaña *Cuándo comprar* y en cada producto):
+   predice **cuándo y cuánto** bajará combinando el calendario de campañas en
+   España (`data/events.json`: Black Friday, rebajas de enero, Days of Play,
+   Prime Day…), la tendencia de la categoría (monitores −~1 %/mes; consolas sin
+   bajada natural) y tu histórico (precio normal, percentil, tendencia). Da un
+   veredicto (comprar / esperar), la próxima bajada probable con su rango de
+   precio, una línea temporal y un **plan de ahorro** (€/semana hasta la campaña).
+   La confianza sube a medida que acumulas histórico.
+7. **🔔 Alertas**: fija un precio objetivo por producto; la app (y el comando
+   `refresh`) te avisa cuando una oferta lo cruza.
+8. **Precios a mano**: en cada producto, *➕ Precio a mano*:
    - **⚡ Comprobar en vivo**: pega la URL del producto; se lee el precio de los
      datos estructurados (JSON-LD / meta) de la página. Funciona en la mayoría de
      tiendas; si alguna bloquea peticiones automáticas, escríbelo a mano.
    - Se guarda un **histórico** y se muestra el mínimo visto.
-6. **🔥 Chollos de la comunidad**: lee los feeds RSS de Chollometro y filtra por
-   el producto (detecta precio, tienda y códigos en el texto).
-7. **🏷️ Cupones**: guarda los códigos que encuentres; se aplican solos.
+9. **🏷️ Cupones**: guarda los códigos que encuentres; se aplican solos.
 
 > ⚠️ Los precios del catálogo (`ref_price`) son **orientativos** y se marcan
 > como "sin comprobar". El programa no inventa precios ni códigos: los reales
@@ -48,6 +72,36 @@ para lo que tú ya tienes en casa**.
 ```
 
 y abre <http://127.0.0.1:8000>. Requiere Python 3.10+.
+
+### Activar Google Shopping (recomendado)
+
+1. Crea una cuenta gratuita en <https://serpapi.com> y copia tu API key.
+2. En la app: *⚙️ Ajustes → Google Shopping* → pega la key → *Guardar*
+   (o exporta `SERPAPI_KEY=...` antes de `./run.sh`).
+
+### Diagnóstico de fuentes
+
+Las fuentes beta dependen del HTML de cada web. Para ver cuáles funcionan desde tu red:
+
+```bash
+.venv/bin/python -m findgnga.cli diagnose
+```
+
+(o *⚙️ Ajustes → Ejecutar diagnóstico*). Guarda el HTML recibido en
+`data/user/snapshots/` para poder afinar los lectores.
+
+### Vigilancia automática
+
+```bash
+.venv/bin/python -m findgnga.cli refresh
+```
+
+busca las PS5 y tus 5 mejores monitores y avisa de las alertas. Para que lo haga
+solo cada 6 horas (cron en macOS/Linux):
+
+```
+0 */6 * * * cd /ruta/a/FindGnga && .venv/bin/python -m findgnga.cli refresh >> data/user/refresh.log 2>&1
+```
 
 Tests:
 
@@ -64,19 +118,26 @@ findgnga/
   scoring/monitors.py  notas de calidad y compatibilidad (con motivos)
   pricing/core.py      envío + cupones → precio final
   pricing/live.py      lectura de precio desde la URL de la tienda
-  pricing/deals.py     feeds de Chollometro
+  pricing/deals.py     feeds RSS de Chollometro
+  providers/           búsqueda automática: engine (orquestador + filtros), serpapi,
+                       chollometro, idealo, stores, extract (JSON-LD / JSON incrustado)
+  predict.py           predicción de bajadas y plan de ahorro
+  settings.py          ajustes (API key, fuentes, caducidad, alertas)
+  cli.py               refresh / diagnose
   storage.py           ficheros JSON
 data/
   monitors.json        catálogo de monitores (fichas editables)
   consoles.json        PS5 y su PVP oficial
   stores.json          tiendas, envío, enlaces de búsqueda, trucos de cupones
   promos.json          cupones compartidos
+  events.json          calendario de rebajas y descuentos típicos (editable)
   user/                tu perfil, precios y cupones (no se sube a git)
 web/                   interfaz (HTML/CSS/JS sin dependencias)
 ```
 
 ## Próximos pasos posibles
 
-- Alertas: comprobación programada de precios y aviso cuando bajen de un umbral.
+- Notificaciones push/email de las alertas.
+- Afinar los lectores beta con los HTML guardados por el diagnóstico.
 - Más categorías (portátiles, SSD, auriculares…) reutilizando el mismo motor.
 - Adaptadores específicos por tienda cuando la lectura genérica no baste.

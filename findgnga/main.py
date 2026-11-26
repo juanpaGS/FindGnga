@@ -11,8 +11,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import predict as predict_mod
 from . import search, storage
+from . import settings as settings_mod
 from .pricing import deals, live
+from .providers import engine
 
 app = FastAPI(title="FindGnga", description="Buscador de gangas de tecnología en España")
 WEB_DIR = storage.ROOT / "web"
@@ -202,6 +205,79 @@ async def api_deals(q: str) -> dict[str, Any]:
 @app.get("/api/links")
 def api_links(q: str) -> list[dict[str, str]]:
     return search.store_links(q)
+
+
+class SettingsIn(BaseModel):
+    serpapi_key: str | None = None  # None = no cambiar; "" = borrar
+    providers: dict[str, bool] | None = None
+    max_offer_age_days: float | None = Field(None, gt=0, le=60)
+    include_used: bool | None = None
+
+
+class TargetIn(BaseModel):
+    price: float | None = Field(None, gt=0)  # None = quitar alerta
+
+
+@app.get("/api/settings")
+def read_settings() -> dict[str, Any]:
+    return {**settings_mod.public(settings_mod.get()), "provider_info": engine.PROVIDERS}
+
+
+@app.put("/api/settings")
+def write_settings(s: SettingsIn) -> dict[str, Any]:
+    changes = {k: v for k, v in s.model_dump().items() if v is not None}
+    return {**settings_mod.public(settings_mod.update(changes)), "provider_info": engine.PROVIDERS}
+
+
+@app.put("/api/targets/{product_id}")
+def set_target(product_id: str, t: TargetIn) -> dict[str, Any]:
+    if not engine.find_product(product_id):
+        raise HTTPException(404, "Producto desconocido")
+    targets = dict(settings_mod.get().get("targets", {}))
+    if t.price is None:
+        targets.pop(product_id, None)
+    else:
+        targets[product_id] = t.price
+    settings_mod.update({"targets": targets})
+    return {"targets": targets}
+
+
+@app.post("/api/live/{product_id}")
+async def api_live(product_id: str, force: bool = False) -> dict[str, Any]:
+    """Busca ahora el precio en todas las fuentes activas y guarda las mejores ofertas."""
+    try:
+        return await engine.live_search(product_id, force=force)
+    except KeyError:
+        raise HTTPException(404, "Producto desconocido") from None
+
+
+@app.get("/api/diagnose")
+async def api_diagnose(product_id: str = "ps5-slim-digital", snapshots: bool = False) -> dict[str, Any]:
+    """Prueba todas las fuentes sin guardar nada (y opcionalmente guarda el HTML recibido)."""
+    folder = storage.user_dir() / "snapshots" if snapshots else None
+    try:
+        r = await engine.live_search(product_id, dry_run=True, snapshot_dir=folder)
+    except KeyError:
+        raise HTTPException(404, "Producto desconocido") from None
+    r["snapshot_dir"] = str(folder) if folder else None
+    return r
+
+
+@app.get("/api/predict/{product_id}")
+def api_predict(product_id: str, saved: float = 0.0) -> dict[str, Any]:
+    found = engine.find_product(product_id)
+    if not found:
+        raise HTTPException(404, "Producto desconocido")
+    product, category = found
+    pricing = search._priced(product, category, None)
+    history = [h for h in storage.read_user("price_history", []) if h["product_id"] == product_id]
+    current = None if pricing["estimated"] else pricing["final_price"]
+    return predict_mod.predict(product, category, current, history, saved=saved)
+
+
+@app.get("/api/calendar")
+def api_calendar() -> dict[str, Any]:
+    return storage.load_catalog_raw("events")
 
 
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")

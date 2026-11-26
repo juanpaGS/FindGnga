@@ -14,7 +14,7 @@ async function api(path, opts = {}) {
   return data;
 }
 
-const state = { profile: null, catalog: null, view: null };
+const state = { profile: null, catalog: null, view: null, live: {}, pred: {}, settings: null };
 
 /* ------------------------------------------------------------------ opciones */
 
@@ -249,27 +249,50 @@ function reasonsList(reasons) {
   return `<ul class="reasons">${reasons.map((r) => `<li class="r-${r.kind}">${esc(r.text)}</li>`).join("")}</ul>`;
 }
 
+const SOURCE_LABEL = { live: "⚡ comprobado", manual: "✍️ añadido a mano" };
+function sourceLabel(src) {
+  if (!src) return "";
+  if (src.startsWith("auto:")) return "🤖 " + (PROVIDER_NAMES[src.slice(5)] || src.slice(5));
+  return SOURCE_LABEL[src] || src;
+}
+const PROVIDER_NAMES = { serpapi: "Google Shopping", chollometro: "Chollometro", idealo: "Idealo", stores: "tienda", watched: "URL vigilada" };
+function ago(iso) {
+  if (!iso) return "";
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "ahora mismo";
+  if (min < 60) return `hace ${min} min`;
+  if (min < 1440) return `hace ${Math.round(min / 60)} h`;
+  return `hace ${Math.round(min / 1440)} d`;
+}
+
 function priceBlock(pricing) {
+  const target = pricing.target ? `<div class="small muted">🔔 Objetivo: ${eur(pricing.target)}</div>` : "";
   if (pricing.estimated) {
+    const stale = pricing.stale?.length ? `<div class="small muted">${pricing.stale.length} precio(s) caducado(s) o sin stock</div>` : "";
     return `<div class="price"><div class="final">${eur(pricing.final_price)}</div>
-      <span class="badge b-est">Precio orientativo · sin comprobar</span></div>`;
+      <span class="badge b-est">Precio orientativo · pulsa 🔎 Buscar precio ahora</span>${stale}${target}</div>`;
   }
   const b = pricing.best;
   const extra = [b.shipping_cost ? `+ ${eur(b.shipping_cost)} envío` : "envío gratis",
-    b.promo_code ? `− ${eur(b.promo_discount)} con <span class="code">${esc(b.promo_code)}</span>` : ""].filter(Boolean).join(" · ");
+    b.promo_code ? `− ${eur(b.promo_discount)} con <span class="code">${esc(b.promo_code)}</span>` : "",
+    b.code && !b.promo_code ? `código <span class="code">${esc(b.code)}</span>` : ""].filter(Boolean).join(" · ");
   const hist = pricing.history && pricing.history.points > 1 ? `<div class="small muted">Mínimo visto: ${eur(pricing.history.min_price)}</div>` : "";
-  return `<div class="price"><div class="final">${eur(pricing.final_price)}</div>
+  return `<div class="price">${pricing.alert ? `<span class="badge b-rec">🔔 ¡Por debajo de tu objetivo!</span>` : ""}
+    <div class="final">${eur(pricing.final_price)}</div>
     <div class="small">en <b>${esc(b.store_name)}</b> (${eur(b.price)} ${extra})</div>
-    <span class="badge b-live">${b.source === "live" ? "⚡ comprobado" : "✍️ añadido"} ${esc((b.checked_at || "").slice(0, 16).replace("T", " "))}</span>${hist}</div>`;
+    <span class="badge b-live">${sourceLabel(b.source)} · ${ago(b.checked_at)}</span>${hist}${target}
+    ${b.url ? `<div><a class="go" href="${esc(b.url)}" target="_blank" rel="noopener">Ir a la tienda ↗</a></div>` : ""}</div>`;
 }
 
 function offersTable(pricing) {
-  if (!pricing.offers.length) return "";
-  return `<table><tr><th>Tienda</th><th class="num">Precio</th><th class="num">Envío</th><th class="num">Cupón</th><th class="num">Total</th><th></th></tr>
-    ${pricing.offers.map((o) => `<tr><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.store_name)}</a>` : esc(o.store_name)}</td>
+  if (!pricing.offers.length) return `<p class="muted small">Sin precios vigentes. Pulsa 🔎 Buscar precio ahora.</p>`;
+  return `<div class="scroll-x"><table><tr><th>Tienda</th><th class="num">Precio</th><th class="num">Envío</th><th class="num">Cupón</th><th class="num">Total</th><th>Fuente</th><th></th></tr>
+    ${pricing.offers.map((o) => `<tr><td>${o.url ? `<a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.store_name)} ↗</a>` : esc(o.store_name)}
+        ${o.code ? ` <span class="code">${esc(o.code)}</span>` : ""}</td>
       <td class="num">${eur(o.price)}</td><td class="num">${eur(o.shipping_cost)}</td>
       <td class="num">${o.promo_code ? `−${eur(o.promo_discount)}` : "—"}</td><td class="num"><b>${eur(o.final_price)}</b></td>
-      <td><button class="ghost small" data-del-offer="${esc(o.id)}" title="Borrar">🗑️</button></td></tr>`).join("")}</table>`;
+      <td class="small muted">${sourceLabel(o.source)} · ${ago(o.checked_at)}</td>
+      <td><button class="ghost small" data-del-offer="${esc(o.id)}" title="Borrar">🗑️</button></td></tr>`).join("")}</table></div>`;
 }
 
 function linksRow(links) {
@@ -277,10 +300,83 @@ function linksRow(links) {
 }
 
 function productActions(product, name) {
+  const pid = esc(product.id);
+  const live = state.live[product.id];
+  const pred = state.pred[product.id];
   return `<div class="actions">
-    <button class="ghost" data-deals="${esc(product.search_query)}">🔥 Chollos de la comunidad</button>
-    <button class="secondary" data-offer="${esc(product.id)}" data-name="${esc(name)}">➕ Añadir / comprobar precio</button></div>
-    <div class="deals" data-deals-out="${esc(product.search_query)}"></div>`;
+    <button class="ghost" data-target="${pid}" data-name="${esc(name)}">🔔 Alerta de precio</button>
+    <button class="ghost" data-offer="${pid}" data-name="${esc(name)}">➕ Precio a mano</button>
+    <button class="secondary" data-predict="${pid}">📈 ¿Comprar ya o esperar?</button>
+    <button class="primary" data-live="${pid}">🔎 Buscar precio ahora</button></div>
+    <div data-live-out="${pid}">${live ? renderLive(live) : ""}</div>
+    <div data-predict-out="${pid}">${pred ? renderPrediction(pred) : ""}</div>`;
+}
+
+function shortErr(e) {
+  const t = String(e || "error").replace(/^\w+(Error|Exception): /, "");
+  if (/403|bloquead/i.test(t)) return "bloqueado por la web";
+  if (/proxy|ConnectError|getaddrinfo|timed? ?out|Timeout/i.test(t)) return "sin conexión";
+  return t.length > 38 ? t.slice(0, 36) + "…" : t;
+}
+
+function providerLine(providers) {
+  return Object.entries(providers).map(([k, st]) => {
+    const n = PROVIDER_NAMES[k] || k;
+    if (st.skipped) return `<span class="pv off" title="${esc(st.error)}">${n}: sin configurar</span>`;
+    return st.ok ? `<span class="pv ok">${n}: ${st.accepted ?? 0}</span>`
+      : `<span class="pv err" title="${esc(st.error)}">${n}: ${esc(shortErr(st.error))}</span>`;
+  }).join("");
+}
+
+function renderLive(r) {
+  if (r.loading) return `<div class="live"><span class="muted">🔎 Buscando en todas las fuentes…</span></div>`;
+  if (r.error) return `<div class="live"><span class="error">${esc(r.error)}</span></div>`;
+  const rows = r.listings.slice(0, 12);
+  return `<div class="live">
+    <div class="live-head"><b>Ofertas encontradas ${ago(r.searched_at)}</b>${r.cached ? ` <span class="muted small">(caché)</span>` : ""}
+      <span class="muted small">· ${r.listings.length} válidas, ${r.rejected_count} descartadas (accesorios, otros modelos, precios raros)</span></div>
+    <div class="pvs">${providerLine(r.providers)}</div>
+    ${rows.length ? `<div class="scroll-x"><table><tr><th>Tienda</th><th>Producto</th><th class="num">Total</th><th></th></tr>
+      ${rows.map((o) => `<tr class="${o.in_stock === false ? "dim" : ""}"><td><b>${esc(o.store_name)}</b></td>
+        <td class="small">${esc(o.title)}
+          ${o.condition === "used" ? `<span class="badge b-est">Usado/reacond.</span>` : ""}${o.bundle ? `<span class="badge b-q">Pack</span>` : ""}
+          ${o.in_stock === false ? `<span class="badge b-est">Sin stock</span>` : ""}${o.code ? ` código <span class="code">${esc(o.code)}</span>` : ""}
+          <div class="muted">${eur(o.price)} ${o.shipping_cost ? "+ " + eur(o.shipping_cost) + " envío" : "· envío gratis*"}${o.promo_code ? " − cupón " + esc(o.promo_code) : ""} · vía ${PROVIDER_NAMES[o.provider] || o.provider}</div></td>
+        <td class="num"><b>${eur(o.final_price)}</b></td>
+        <td><a class="go" href="${esc(o.url)}" target="_blank" rel="noopener">Ir ↗</a></td></tr>`).join("")}</table></div>
+      <p class="muted small">* Envío estimado con las reglas de la tienda cuando la fuente no lo indica. Confirma en el carrito.</p>`
+    : `<p class="muted">No se encontraron ofertas válidas. ${Object.values(r.providers).every((s) => !s.ok) ? "Ninguna fuente respondió: revisa <a href=\"#settings\" data-go=\"settings\">Ajustes → Diagnóstico</a>." : "Prueba más tarde o usa los enlaces de tiendas."}</p>`}
+  </div>`;
+}
+
+const LEVEL = { buy: ["✅", "v-good"], wait: ["⏳", "v-meh"], neutral: ["🤔", ""], unknown: ["❔", ""] };
+
+function renderPrediction(p) {
+  if (p.loading) return `<div class="live"><span class="muted">Calculando…</span></div>`;
+  if (p.error) return `<div class="live"><span class="error">${esc(p.error)}</span></div>`;
+  const [icon, cls] = LEVEL[p.level] || LEVEL.neutral;
+  const max = Math.max(p.normal_price, p.current_price || 0) * 1.02;
+  const min = Math.min(...p.timeline.map((e) => e.expected_low), p.current_price || Infinity) * 0.97;
+  const pos = (v) => Math.max(0, Math.min(100, ((v - min) / (max - min)) * 100));
+  const nd = p.next_drop;
+  return `<div class="live pred">
+    <div class="verdict ${cls}" style="font-size:17px">${icon} ${esc(p.verdict)}</div>
+    <div class="small muted">Confianza ${esc(p.confidence)} · precio normal ${eur(p.normal_price)} (${esc(p.normal_source)})
+      ${p.percentile != null ? ` · el precio actual es más bajo que el ${100 - p.percentile}% de tu histórico` : ""}</div>
+    ${nd ? `<p>📉 <b>Próxima bajada probable:</b> ${esc(nd.name)} (${nd.start}${nd.days_until ? `, en ${nd.days_until} días` : ""}) → ${eur(nd.expected_low)}–${eur(nd.expected_high)} (−${nd.discount_pct[0]}–${nd.discount_pct[1]} %)</p>` : ""}
+    <div class="timeline">
+      ${p.current_price ? `<div class="tl-row"><span class="tl-name"><b>Hoy</b></span><span class="tl-track"><span class="tl-dot" style="left:${pos(p.current_price)}%"></span></span><span class="tl-val">${eur(p.current_price)}</span></div>` : ""}
+      ${p.timeline.map((e) => `<div class="tl-row ${e.active ? "act" : ""}"><span class="tl-name">${esc(e.name)}<br><span class="muted small">${e.start}${e.active ? " · ¡ahora!" : ""}</span></span>
+        <span class="tl-track"><span class="tl-range" style="left:${pos(e.expected_low)}%;width:${Math.max(2, pos(e.expected_high) - pos(e.expected_low))}%;opacity:${0.35 + e.reliability * 0.65}"></span></span>
+        <span class="tl-val">${eur(e.expected_low)}–${eur(e.expected_high)}</span></div>`).join("")}
+    </div>
+    ${p.plan ? `<div class="plan">🐷 <b>${p.plan.mode === "wait" ? "Plan de ahorro" : "Si hoy no te llega el dinero"}</b>:
+      ${p.plan.mode === "wait" ? "" : "la siguiente oportunidad parecida es "}${esc(p.plan.event)} (${p.plan.date}), precio esperado ≈ ${eur(p.plan.target_price)}.
+      Ya tengo <input type="number" min="0" step="10" value="${p.plan.already_saved}" data-saved="${esc(p.product_id)}" style="width:110px;display:inline-block"> €
+      → ahorra <b>${eur(p.plan.per_week)}/semana</b> durante ${p.plan.weeks} semanas.</div>` : ""}
+    <details><summary>¿Por qué?</summary><ul class="reasons">${p.reasons.map((r) => `<li class="r-info">${esc(r)}</li>`).join("")}</ul>
+      <p class="small muted">Estimación basada en campañas de años anteriores y en tu histórico de precios (cada búsqueda lo alimenta). No es una garantía.</p></details>
+  </div>`;
 }
 
 function monitorCard(it, hero = false) {
@@ -296,7 +392,7 @@ function monitorCard(it, hero = false) {
       ${bar("Calidad/precio", Math.min(100, it.value_index * 2.5))}</div>
     ${reasonsList(e.reasons)}
     ${e.devices.map((d) => `<details ${hero ? "open" : ""}><summary>🔌 Con tu ${esc(d.device_label)}: ${d.score}/100${d.dealbreaker ? " ⛔" : ""}</summary>${reasonsList(d.reasons)}</details>`).join("")}
-    <details><summary>🛒 Precios y tiendas (${it.pricing.offers.length} comprobados)</summary>${offersTable(it.pricing)}${linksRow(it.links)}</details>
+    <details><summary>🛒 Precios vigentes por tienda (${it.pricing.offers.length})</summary>${offersTable(it.pricing)}${linksRow(it.links)}</details>
     ${productActions(m, name)}
   </article>`;
 }
@@ -315,7 +411,12 @@ async function viewMonitors() {
       <div><b>Prioridad</b><input type="range" id="prio" min="0" max="1" step="0.1" value="${q.priority}">
         <div class="range-labels"><span>💸 Precio</span><span>💎 Calidad</span></div></div>
     </div>
+    ${keyBanner()}
+    <div class="actions" style="justify-content:flex-start"><button class="primary" id="liveTop">🔎 Buscar precios reales del top 5</button></div>
     <div id="results"><p class="muted">Buscando…</p></div>`;
+  bindResultActions(app, () => {});
+  let lastIds = [];
+  $("#liveTop").onclick = (e) => runLiveAll(lastIds.slice(0, 5), $("#results"), load, e.target);
   app.querySelectorAll("#devs .chip").forEach((b) => b.onclick = () => {
     const id = b.dataset.id;
     q.device_ids = q.device_ids.includes(id) ? q.device_ids.filter((x) => x !== id) : [...q.device_ids, id];
@@ -330,6 +431,7 @@ async function viewMonitors() {
     const out = $("#results");
     try {
       const r = await api("/api/search/monitors", { method: "POST", body: q });
+      lastIds = r.results.map((x) => x.product.id);
       out.innerHTML = renderMonitorResults(r);
       bindResultActions(out, load);
     } catch (e) { out.innerHTML = `<p class="error">Error: ${esc(e.message)}</p>`; }
@@ -340,7 +442,7 @@ async function viewMonitors() {
 function renderMonitorResults(r, limit) {
   const list = limit ? r.results.slice(0, limit) : r.results;
   const anyEstimated = r.results.some((x) => x.pricing.estimated);
-  return `${anyEstimated ? `<div class="notice">💡 Los precios marcados como <b>orientativos</b> son de referencia. Pulsa <b>➕ Añadir / comprobar precio</b> con la URL de la tienda para usar el precio real de hoy (con envío y cupón).</div>` : ""}
+  return `${anyEstimated ? `<div class="notice">💡 Los precios marcados como <b>orientativos</b> son de referencia. Pulsa <b>🔎 Buscar precio ahora</b> para traer las ofertas reales de hoy con su enlace (con envío y cupón).</div>` : ""}
     ${list.length ? list.map((it, i) => monitorCard(it, i === 0)).join("") : `<p>No hay monitores que encajen. Prueba a subir el presupuesto.</p>`}
     ${!limit && r.others.length ? `<details><summary>Ver ${r.others.length} descartados (fuera de presupuesto o poco compatibles)</summary>
       ${r.others.map((it) => `<div class="result"><b>${esc(it.product.brand + " " + it.product.model)}</b> — ${eur(it.pricing.final_price)}
@@ -351,8 +453,13 @@ function renderMonitorResults(r, limit) {
 async function viewPS5() {
   app.innerHTML = `<h1>🎮 PS5 al mejor precio</h1>
     <p class="muted">Comparamos el precio final (con envío y cupones) contra el PVP oficial de Sony en España para decirte si de verdad es una ganga.</p>
-    <label class="chip sel" style="display:inline-block"><input type="checkbox" id="incl" ${state.ps5Incl !== false ? "checked" : ""}> Recomendar monitor que sirva también para mis otros dispositivos</label>
+    ${keyBanner()}
+    <div class="actions" style="justify-content:flex-start">
+      <button class="primary" id="liveAll">🔎 Buscar PS5 ahora en todas las tiendas</button>
+      <label class="chip sel"><input type="checkbox" id="incl" ${state.ps5Incl !== false ? "checked" : ""}> Monitor que sirva también para mis otros dispositivos</label></div>
     <div id="results"><p class="muted">Buscando…</p></div>`;
+  bindResultActions(app, () => {});
+  $("#liveAll").onclick = (e) => runLiveAll(state.catalog.consoles.map((c) => c.id), $("#results"), load, e.target);
   $("#incl").onchange = (e) => { state.ps5Incl = e.target.checked; load(); };
   async function load() {
     const out = $("#results");
@@ -377,10 +484,10 @@ function consoleCard(c, budget) {
   return `<article class="result">
     <div class="result-head"><div><div class="title">${esc(p.name)}</div>
       <div class="muted small">PVP oficial: ${eur(p.msrp)} · ${esc(p.notes)}</div>
-      ${v ? `<div class="verdict v-${v.level}">${v.discount_pct > 0 ? "−" + v.discount_pct + "% · " : ""}${esc(v.label)}</div>` : `<div class="muted small">Aún sin precios comprobados: añade uno para saber si es ganga.</div>`}
+      ${v ? `<div class="verdict v-${v.level}">${v.discount_pct > 0 ? "−" + v.discount_pct + "% · " : ""}${esc(v.label)}</div>` : `<div class="muted small">Aún sin precios actuales: pulsa 🔎 Buscar precio ahora.</div>`}
       ${over ? `<div class="small" style="color:var(--warn)">⚠️ Por encima de tu presupuesto (${eur(budget)})</div>` : ""}
     </div>${priceBlock(c.pricing)}</div>
-    <details><summary>🛒 Precios y tiendas (${c.pricing.offers.length} comprobados)</summary>${offersTable(c.pricing)}${linksRow(c.links)}</details>
+    <details><summary>🛒 Precios vigentes por tienda (${c.pricing.offers.length})</summary>${offersTable(c.pricing)}${linksRow(c.links)}</details>
     ${productActions(p, p.name)}
   </article>`;
 }
@@ -392,19 +499,56 @@ function bindResultActions(root, reload) {
   root.querySelectorAll("[data-del-offer]").forEach((b) => b.onclick = async () => {
     await api(`/api/offers/${b.dataset.delOffer}`, { method: "DELETE" }); reload();
   });
-  root.querySelectorAll("[data-deals]").forEach((b) => b.onclick = async () => {
-    const q = b.dataset.deals;
-    const out = [...root.querySelectorAll("[data-deals-out]")].find((x) => x.dataset.dealsOut === q);
-    out.innerHTML = `<span class="muted">Buscando en Chollometro…</span>`;
-    try {
-      const r = await api(`/api/deals?q=${encodeURIComponent(q)}`);
-      const link = `https://www.chollometro.com/search?q=${encodeURIComponent(q)}`;
-      out.innerHTML = r.items.length
-        ? `<ul>${r.items.slice(0, 8).map((d) => `<li><a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.title)}</a>
-            ${d.price ? ` · <b>${eur(d.price)}</b>` : ""}${d.merchant ? ` · ${esc(d.merchant)}` : ""}${d.code ? ` · código <span class="code">${esc(d.code)}</span>` : ""}</li>`).join("")}</ul>`
-        : `<span class="muted">Ningún chollo reciente en los feeds${r.errors.length ? " (no se pudo leer Chollometro)" : ""}. <a href="${link}" target="_blank" rel="noopener">Buscar en Chollometro ↗</a></span>`;
-    } catch (e) { out.innerHTML = `<span class="error">${esc(e.message)}</span>`; }
+  root.querySelectorAll("[data-live]").forEach((b) => b.onclick = () => runLive(b.dataset.live, root, reload));
+  root.querySelectorAll("[data-predict]").forEach((b) => b.onclick = () => runPredict(b.dataset.predict, root));
+  root.querySelectorAll("[data-saved]").forEach((inp) => inp.onchange = () => runPredict(inp.dataset.saved, root, +inp.value || 0));
+  root.querySelectorAll("[data-go]").forEach((a) => a.onclick = (e) => { e.preventDefault(); go(a.dataset.go); });
+  root.querySelectorAll("[data-target]").forEach((b) => b.onclick = async () => {
+    const cur = state.settings?.targets?.[b.dataset.target];
+    const v = prompt(`Avísame cuando «${b.dataset.name}» baje de (€). Vacío para quitar la alerta:`, cur ?? "");
+    if (v === null) return;
+    const price = v.trim() === "" ? null : parseFloat(v.replace(",", "."));
+    const r = await api(`/api/targets/${b.dataset.target}`, { method: "PUT", body: { price } });
+    state.settings.targets = r.targets; reload();
   });
+}
+
+function outFor(root, attr, pid) {
+  return [...root.querySelectorAll(`[${attr}]`)].find((x) => x.getAttribute(attr) === pid);
+}
+
+async function runLive(pid, root, reload, { quiet = false } = {}) {
+  state.live[pid] = { loading: true };
+  const out = outFor(root, "data-live-out", pid);
+  if (out) out.innerHTML = renderLive(state.live[pid]);
+  try { state.live[pid] = await api(`/api/live/${pid}?force=true`, { method: "POST" }); }
+  catch (e) { state.live[pid] = { error: e.message }; }
+  if (!quiet) await reload();
+}
+
+async function runPredict(pid, root, saved = 0) {
+  state.pred[pid] = { loading: true };
+  const out = outFor(root, "data-predict-out", pid);
+  if (out) out.innerHTML = renderPrediction(state.pred[pid]);
+  try { state.pred[pid] = await api(`/api/predict/${pid}?saved=${saved}`); }
+  catch (e) { state.pred[pid] = { error: e.message }; }
+  const o2 = outFor(root, "data-predict-out", pid);
+  if (o2) { o2.innerHTML = renderPrediction(state.pred[pid]); bindResultActions(o2, () => {}); }
+}
+
+async function runLiveAll(ids, root, reload, btn) {
+  btn.disabled = true;
+  for (let i = 0; i < ids.length; i++) {
+    btn.textContent = `🔎 Buscando ${i + 1}/${ids.length}…`;
+    await runLive(ids[i], root, reload, { quiet: true });
+  }
+  btn.disabled = false; btn.textContent = "🔎 Buscar de nuevo";
+  await reload();
+}
+
+function keyBanner() {
+  return state.settings && !state.settings.serpapi_key_set
+    ? `<div class="notice">⚙️ Para precios reales de casi todas las tiendas españolas con enlace directo, activa <b>Google Shopping</b> en <a href="#settings" data-go="settings">Ajustes</a> (API gratuita). Sin ella se usan Chollometro, Idealo y las tiendas directamente, que a veces bloquean.</div>` : "";
 }
 
 function openOfferDialog(productId, name, reload) {
@@ -476,9 +620,78 @@ async function viewPromos() {
   app.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => { await api(`/api/promos/${b.dataset.del}`, { method: "DELETE" }); viewPromos(); });
 }
 
+/* ------------------------------------------------------------------ cuándo comprar */
+
+async function viewWhen() {
+  app.innerHTML = `<h1>📈 ¿Cuándo comprar?</h1>
+    <p class="muted">Estimamos cuándo y cuánto bajará cada producto con el calendario de campañas en España, la tendencia de su categoría y tu histórico de precios (que crece cada vez que buscas). Úsalo para decidir si comprar ya o ahorrar para la próxima bajada.</p>
+    <div id="preds"><p class="muted">Calculando…</p></div>
+    <h2>🗓️ Calendario de rebajas</h2><div id="cal"></div>`;
+  const out = $("#preds");
+  const [cal, mon] = await Promise.all([api("/api/calendar"), api("/api/search/monitors", { method: "POST", body: {} })]);
+  const items = [...state.catalog.consoles.map((c) => ({ id: c.id, name: c.name })),
+    ...mon.results.slice(0, 3).map((m) => ({ id: m.product.id, name: `${m.product.brand} ${m.product.model}` }))];
+  const preds = await Promise.all(items.map((it) => api(`/api/predict/${it.id}`).catch((e) => ({ error: e.message }))));
+  preds.forEach((p, i) => { state.pred[items[i].id] = p; });
+  out.innerHTML = items.map((it, i) => `<article class="result"><div class="title">${esc(it.name)}</div>
+    ${preds[i].current_price == null ? `<p class="small muted">Sin precio actual: la predicción usa el precio de referencia. <button class="ghost small" data-live="${esc(it.id)}">🔎 Buscar precio ahora</button></p><div data-live-out="${esc(it.id)}"></div>` : ""}
+    <div data-predict-out="${esc(it.id)}">${renderPrediction(preds[i])}</div></article>`).join("");
+  bindResultActions(out, viewWhen);
+  const today = new Date().toISOString().slice(0, 10);
+  $("#cal").innerHTML = `<div class="scroll-x"><table><tr><th>Campaña</th><th>Fechas</th><th class="num">Monitores</th><th class="num">Consolas</th></tr>
+    ${cal.events.filter((e) => e.end >= today).map((e) => `<tr><td>${esc(e.name)}</td><td class="small">${e.start} → ${e.end}</td>
+      <td class="num">${pct(e.discount.monitor)}</td><td class="num">${pct(e.discount.console)}</td></tr>`).join("")}
+    ${cal.unscheduled.map((e) => `<tr><td>${esc(e.name)}</td><td class="small">sin fecha fija</td><td class="num">${pct(e.discount.monitor)}</td><td class="num">${pct(e.discount.console)}</td></tr>`).join("")}
+    </table></div><p class="small muted">Descuentos típicos de años anteriores. Puedes ajustarlos en <code>data/events.json</code>.</p>`;
+}
+const pct = (r) => r && r[1] > 0 ? `${Math.round(r[0] * 100)}–${Math.round(r[1] * 100)} %` : "—";
+
+/* ------------------------------------------------------------------ ajustes */
+
+async function viewSettings() {
+  const st = state.settings = await api("/api/settings");
+  app.innerHTML = `<h1>⚙️ Ajustes de búsqueda</h1>
+    <div class="panel"><h3>🔑 Google Shopping (recomendado)</h3>
+      <p class="small">Es como funcionan los comparadores: una sola consulta trae precio, tienda, envío y enlace de casi todas las tiendas españolas.
+      Crea una cuenta gratuita en <a href="https://serpapi.com" target="_blank" rel="noopener">serpapi.com</a> y pega tu API key (el plan gratis da para buscar tus productos varias veces al día).
+      Se guarda sólo en tu ordenador (<code>data/user/settings.json</code>).</p>
+      <div class="row"><input type="text" id="key" placeholder="${st.serpapi_key_set ? "Guardada (" + esc(st.serpapi_key_hint) + ") – escribe otra para cambiarla" : "Pega aquí tu API key"}">
+        <div><button class="primary" id="saveKey">Guardar</button> ${st.serpapi_key_set ? `<button class="ghost" id="delKey">Quitar</button>` : ""}</div></div></div>
+    <div class="panel" style="margin-top:12px"><h3>Fuentes</h3>
+      ${st.provider_info.map((p) => `<label class="src"><input type="checkbox" data-prov="${p.id}" ${st.providers[p.id] ? "checked" : ""}>
+        <b>${esc(p.name)}</b>${p.beta ? ` <span class="badge b-est">beta</span>` : ""}<br><span class="small muted">${esc(p.desc)}</span></label>`).join("")}
+      <div class="row" style="margin-top:10px">
+        <label>Los precios caducan a los <input type="number" id="age" min="1" max="60" value="${st.max_offer_age_days}" style="width:80px;display:inline-block"> días</label>
+        <label><input type="checkbox" id="used" ${st.include_used ? "checked" : ""}> Contar reacondicionados/segunda mano en el mejor precio</label>
+      </div><p class="error" id="serr"></p></div>
+    <div class="panel" style="margin-top:12px"><h3>🩺 Diagnóstico</h3>
+      <p class="small muted">Prueba cada fuente con «PS5 Slim Digital» sin guardar nada y guarda el HTML recibido en <code>data/user/snapshots/</code> para poder afinar los lectores.</p>
+      <button class="secondary" id="diag">Ejecutar diagnóstico</button><div id="diagOut"></div></div>`;
+  const save = async (body) => {
+    try { state.settings = await api("/api/settings", { method: "PUT", body }); state.live = {}; }
+    catch (e) { $("#serr").textContent = e.message; }
+  };
+  $("#saveKey").onclick = async () => { const k = $("#key").value.trim(); if (k) { await save({ serpapi_key: k }); viewSettings(); } };
+  $("#delKey") && ($("#delKey").onclick = async () => { await save({ serpapi_key: "" }); viewSettings(); });
+  app.querySelectorAll("[data-prov]").forEach((c) => c.onchange = () => save({ providers: { ...state.settings.providers, [c.dataset.prov]: c.checked } }));
+  $("#age").onchange = (e) => save({ max_offer_age_days: +e.target.value || 3 });
+  $("#used").onchange = (e) => save({ include_used: e.target.checked });
+  $("#diag").onclick = async (e) => {
+    e.target.disabled = true; $("#diagOut").innerHTML = `<p class="muted">Probando fuentes… (hasta ~30 s)</p>`;
+    try {
+      const r = await api("/api/diagnose?snapshots=true");
+      $("#diagOut").innerHTML = `<div class="pvs">${providerLine(r.providers)}</div>
+        <ul class="small">${Object.entries(r.providers).map(([k, v]) => `<li><b>${PROVIDER_NAMES[k] || k}</b>: ${v.ok ? `${v.raw} en bruto → ${v.accepted ?? 0} válidos${v.ms != null ? ` (${v.ms} ms)` : ""}` : esc(v.error)}
+          ${v.detail ? `<ul>${Object.entries(v.detail).map(([s2, d]) => `<li>${esc(s2)}: ${esc(d)}</li>`).join("")}</ul>` : ""}</li>`).join("")}</ul>
+        ${renderLive(r)}<p class="small muted">HTML guardado en ${esc(r.snapshot_dir || "")}</p>`;
+    } catch (err) { $("#diagOut").innerHTML = `<p class="error">${esc(err.message)}</p>`; }
+    e.target.disabled = false;
+  };
+}
+
 /* ------------------------------------------------------------------ router */
 
-const VIEWS = { profile: viewProfile, monitors: viewMonitors, ps5: viewPS5, promos: viewPromos };
+const VIEWS = { profile: viewProfile, monitors: viewMonitors, ps5: viewPS5, when: viewWhen, promos: viewPromos, settings: viewSettings };
 
 function go(view) {
   state.view = view;
@@ -493,11 +706,11 @@ document.querySelectorAll("#tabs button").forEach((b) => b.onclick = () => go(b.
 
 (async function init() {
   try {
-    [state.profile, state.catalog] = await Promise.all([api("/api/profile"), api("/api/catalog")]);
+    [state.profile, state.catalog, state.settings] = await Promise.all([api("/api/profile"), api("/api/catalog"), api("/api/settings")]);
   } catch (e) {
     app.innerHTML = `<p class="error">No se pudo conectar con el servidor: ${esc(e.message)}</p>`;
     return;
   }
   const hash = location.hash.slice(1);
-  go(VIEWS[hash] && state.profile.devices?.length ? hash : "profile");
+  go(VIEWS[hash] && (state.profile.devices?.length || hash === "settings") ? hash : "profile");
 })();
