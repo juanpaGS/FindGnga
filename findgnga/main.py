@@ -6,7 +6,7 @@ import uuid
 from datetime import date, datetime
 from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -318,21 +318,32 @@ async def api_shopcheck(req: ShopCheckIn) -> dict[str, Any]:
                                  req.product_id, req.text, req.online)
 
 
+class DeskPos(BaseModel):
+    x: float = Field(0, ge=-5, le=5)
+    z: float = Field(0, ge=-5, le=5)
+    rot: float = Field(0, ge=-7, le=7)
+
+
 class DeskItem(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], max_length=40)
     type: Literal[desk_mod.ITEM_TYPES]  # type: ignore[valid-type]
     model: str | None = Field(None, max_length=120)
     catalog_id: str | None = Field(None, max_length=80)
     specs: dict[str, Any] = {}
+    paid: float | None = Field(None, ge=0, le=20000)          # lo que pagaste: las mejoras tienen que costar menos
+    color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
+    pos: DeskPos | None = None                                # posición en el escritorio 3D (metros)
 
 
 class Desk(BaseModel):
     items: list[DeskItem] = Field([], max_length=40)
+    style: dict[str, str | float | bool | list[str]] = {}    # madera, patas, pared, luz, decoración…
 
 
 class IdentifyIn(BaseModel):
     type: Literal[desk_mod.ITEM_TYPES]  # type: ignore[valid-type]
     model: str = Field("", max_length=120)
+    catalog_id: str | None = Field(None, max_length=80)
 
 
 @app.get("/api/desk")
@@ -351,7 +362,14 @@ def write_desk(desk: Desk) -> dict[str, Any]:
 
 @app.post("/api/desk/identify")
 def identify_item(req: IdentifyIn) -> dict[str, Any]:
-    return desk_mod.identify(req.type, req.model)
+    """Del modelo escrito (o elegido de la lista) a su ficha completa: puertos, chip, RAM, color…"""
+    return desk_mod.identify(req.type, req.model, req.catalog_id)
+
+
+@app.get("/api/desk/suggest")
+def suggest_items(type: Literal[desk_mod.ITEM_TYPES], q: str = Query("", max_length=120)) -> dict[str, Any]:  # type: ignore[valid-type]
+    """Autocompletado: modelos del catálogo que encajan con lo escrito (y una ficha deducida si no está)."""
+    return {"items": desk_mod.suggest(type, q)}
 
 
 @app.get("/api/accessories")

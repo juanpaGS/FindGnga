@@ -1,144 +1,41 @@
 """Mi escritorio: los dispositivos que tienes y los accesorios que les sacan partido.
 
-- ``identify``: a partir del tipo y el modelo escrito ("MacBook Air M2 13", "LG 27UP850N",
-  "iPhone 13") deduce sus características (puertos, chip, pulgadas…).
+- ``identify`` / ``suggest`` (en ``devices.py``): del modelo escrito a la ficha completa.
 - ``desk_devices``: convierte el escritorio en dispositivos del perfil, para que la búsqueda
   de monitores y PS5 se adapte a lo que tienes.
-- ``recommend``: accesorios compatibles (hubs, cables, cascos, lámparas…), monitores que
-  puedes añadir y mejoras, con el mejor precio conocido de cada uno.
+- ``recommend``: lo que te falta (elegido por compatibilidad con TODOS tus dispositivos,
+  calidad y precio), mejoras de lo que ya tienes que cuestan menos de lo que pagaste,
+  cables y hubs, monitores que caben y accesorios de PS5.
 
-Las reglas son orientativas (p. ej. cuántas pantallas admite cada Mac): se explica el porqué
-de cada recomendación para que el usuario pueda comprobarlo.
+Las reglas son orientativas (p. ej. cuántas pantallas admite cada Mac) y la calidad es una
+puntuación orientativa de FindGnga: cada recomendación explica el porqué para poder comprobarlo.
 """
 
 from __future__ import annotations
 
-import re
+import math
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
-from . import search, storage
-from .providers.base import compact, norm
+from . import devices, search, storage
 from .scoring.monitors import evaluate
 
-ITEM_TYPES = ("monitor", "laptop", "desktop", "ps5", "keyboard", "mouse", "phone", "light", "mousepad", "headset")
-GOOD_PRICE = 0.90  # «buen precio» = al menos un 10 % por debajo del precio de referencia
+ITEM_TYPES = ("monitor", "laptop", "desktop", "ps5", "keyboard", "mouse", "phone", "tablet", "light", "mousepad",
+              "headset", "webcam", "hub", "speakers", "arm")
+GOOD_PRICE = 0.90   # «buen precio» = al menos un 10 % por debajo del precio de referencia
+UPGRADE_GAIN = 8    # una mejora tiene que sacar al menos 8 puntos de calidad a lo que tienes
+TYPE_NAME = {"monitor": "monitor", "laptop": "portátil", "desktop": "ordenador", "ps5": "PS5", "keyboard": "teclado",
+             "mouse": "ratón", "phone": "móvil", "tablet": "tablet", "light": "luz de monitor", "mousepad": "alfombrilla",
+             "headset": "cascos", "webcam": "webcam", "hub": "hub", "speakers": "altavoces", "arm": "brazo de monitor"}
 
-
-# ------------------------------------------------------------------ identificar modelos
-
-def _wireless(n: str) -> bool:
-    return bool(re.search(r"\b(inalambric[oa]s?|wireless|bluetooth|lightspeed|bt)\b", n))
-
-
-def _match_monitor(text: str) -> dict[str, Any] | None:
-    """Busca el monitor en el catálogo por código ("27UP850N") o por marca + modelo."""
-    c, n = compact(text), norm(text)
-    best, best_score = None, 0.0
-    for m in storage.load_catalog("monitors"):
-        if any(len(code) >= 4 and compact(code) in c for code in m.get("codes", [])):
-            return m
-        if not re.search(rf"\b{re.escape(norm(m['brand']))}\b", n):
-            continue
-        words = [w for w in norm(m["model"]).split() if len(w) > 1 and not w.isdigit()]
-        if not words:
-            continue
-        score = sum(1 for w in words if re.search(rf"\b{re.escape(w)}\b", n)) / len(words)
-        if score > best_score:
-            best, best_score = m, score
-    return best if best_score >= 0.5 else None
-
-
-def _mac(n: str, laptop: bool) -> dict[str, Any]:
-    s: dict[str, Any] = {"platform": "mac"}
-    chip = re.search(r"\bm([1-9])(?: (pro|max|ultra))?\b", n)
-    s["chip_gen"] = int(chip.group(1)) if chip else None
-    s["chip_tier"] = chip.group(2) if chip and chip.group(2) else "base"
-    if laptop:
-        s["model_line"] = "air" if "air" in n else "pro"
-        inch = re.search(r"\b(13|14|15|16)\b", n)
-        s["screen_in"] = int(inch.group(1)) if inch else None
-        s["ports"] = {"usb_c": True, "thunderbolt": True, "hdmi": s["model_line"] == "pro" and (s["chip_gen"] or 0) >= 1
-                      and s["screen_in"] in (14, 16), "dp": False, "usb_a": False}
-    else:
-        s["model_line"] = "studio" if "studio" in n else "imac" if "imac" in n else "mini"
-        s["ports"] = {"usb_c": True, "thunderbolt": True, "hdmi": s["model_line"] != "imac", "dp": False,
-                      "usb_a": s["model_line"] != "imac" and not (s["model_line"] == "mini" and (s["chip_gen"] or 0) >= 4)}
-    ram = re.search(r"\b(8|16|18|24|32|36|48|64|96|128) ?gb\b", n)
-    s["ram_gb"] = int(ram.group(1)) if ram else None
-    return s
-
-
-def _gpu_tier(n: str) -> str | None:
-    g = re.search(r"\brtx ?(\d0)(\d0)\b", n)
-    if g:
-        return "high" if int(g.group(2)) >= 70 else "mid"
-    g = re.search(r"\brx ?(\d)(\d)00", n)
-    if g:
-        return "high" if int(g.group(2)) >= 8 else "mid"
-    return None
-
-
-def identify(item_type: str, text: str) -> dict[str, Any]:
-    """Devuelve {'specs': {...}, 'catalog_id': id|None, 'guess': texto de lo que se ha entendido}."""
-    n = norm(text)
-    specs: dict[str, Any] = {}
-    catalog_id = None
-    guess = []
-    if item_type == "monitor":
-        m = _match_monitor(text)
-        if m:
-            catalog_id = m["id"]
-            specs = {"size_in": m["size_in"], "aspect": m.get("aspect", "16:9"), "res_w": m["res_w"], "res_h": m["res_h"],
-                     "refresh_hz": m["refresh_hz"], "usb_c": bool(m.get("usb_c_video")), "usb_c_pd_w": m.get("usb_c_pd_w", 0),
-                     "hdmi21": bool(m.get("hdmi_21")), "dp": bool(m.get("displayport")), "curved": False}
-            guess.append(f"{m['brand']} {m['model']} (del catálogo)")
-        else:
-            size = re.search(r"\b(2[1-9]|3[0-9]|4[0-9])\b(?: ?(?:pulgadas|inch|in|\"))?", n)
-            specs = {"size_in": int(size.group(1)) if size else 27,
-                     "aspect": "32:9" if re.search(r"\b(32 9|super ?ultra|g9|49)\b", n) else
-                               "21:9" if re.search(r"\b(21 9|ultrawide|ultrapanoramico|34)\b", n) else "16:9",
-                     "res_w": 3840 if re.search(r"\b(4k|uhd|2160p?)\b", n) else 2560 if re.search(r"\b(qhd|1440p?|2k)\b", n) else 1920,
-                     "refresh_hz": int(h.group(1)) if (h := re.search(r"\b(\d{2,3}) ?hz\b", n)) else 60,
-                     "usb_c": bool(re.search(r"\busb ?c\b|\bthunderbolt\b", n)), "usb_c_pd_w": 0,
-                     "hdmi21": bool(re.search(r"\bhdmi ?2 1\b", n)), "dp": True,
-                     "curved": bool(re.search(r"\b(curvo|curved|odyssey g9)\b", n))}
-            guess.append(f"Monitor de {specs['size_in']}\" (no está en el catálogo: revisa las entradas)")
-    elif item_type in ("laptop", "desktop"):
-        if re.search(r"\b(mac|macbook|imac|apple)\b", n):
-            specs = _mac(n, item_type == "laptop")
-            name = "MacBook " + specs["model_line"].title() if item_type == "laptop" else "Mac " + specs["model_line"]
-            guess.append(f"{name}{' M' + str(specs['chip_gen']) if specs['chip_gen'] else ''}"
-                         f"{' ' + specs['chip_tier'].title() if specs['chip_tier'] != 'base' else ''}")
-        else:
-            specs = {"platform": "windows", "gpu_tier": _gpu_tier(n) or ("integrated" if item_type == "laptop" else "mid"),
-                     "ports": {"usb_c": True, "thunderbolt": bool(re.search(r"\b(thunderbolt|tb4|usb ?4)\b", n)),
-                               "hdmi": True, "dp": item_type == "desktop", "usb_a": True}}
-            guess.append(("Portátil" if item_type == "laptop" else "PC") + " Windows")
-    elif item_type == "ps5":
-        ed = "pro" if re.search(r"\bpro\b", n) else "digital" if re.search(r"\bdigital\b", n) else "standard"
-        specs = {"edition": ed}
-        guess.append({"pro": "PS5 Pro", "digital": "PS5 Digital (sin lector)", "standard": "PS5 con lector"}[ed])
-    elif item_type == "phone":
-        ip = re.search(r"\biphone ?(\d{1,2})", n)
-        if ip or "iphone" in n:
-            gen = int(ip.group(1)) if ip else 15
-            specs = {"os": "ios", "connector": "usb_c" if gen >= 15 else "lightning", "magsafe": gen >= 12}
-            guess.append(f"iPhone {gen}" + (" (USB-C)" if gen >= 15 else " (Lightning)"))
-        else:
-            specs = {"os": "android", "connector": "usb_c", "magsafe": False}
-            guess.append("Móvil Android (USB-C)")
-    else:
-        specs = {"wireless": _wireless(n)}
-        if item_type == "keyboard":
-            specs["mechanical"] = bool(re.search(r"\b(mecanico|mechanical|keychron|switch)\b", n))
-    return {"specs": specs, "catalog_id": catalog_id, "guess": "; ".join(guess)}
+identify = devices.identify
+suggest = devices.suggest
 
 
 # ------------------------------------------------------------------ escritorio ↔ perfil
 
 def read_desk() -> dict[str, Any]:
-    return storage.read_user("desk", {"items": []})
+    return storage.read_user("desk", {"items": [], "style": {}})
 
 
 def desk_devices(desk: dict[str, Any]) -> list[dict[str, Any]]:
@@ -172,31 +69,299 @@ def sync_profile(desk: dict[str, Any]) -> dict[str, Any]:
     return profile
 
 
-# ------------------------------------------------------------------ recomendaciones
+# ------------------------------------------------------------------ contexto del escritorio
 
 def max_external_displays(it: dict[str, Any]) -> tuple[int, str]:
     """Pantallas externas que admite un ordenador (orientativo, según Apple / lo habitual en PC)."""
     s, t = it.get("specs") or {}, it.get("type")
     if s.get("platform") != "mac":
-        return (4, "un PC de sobremesa con gráfica suele admitir 3-4 monitores") if t == "desktop" else \
-               (3, "un portátil Windows suele admitir 2-3 monitores (con dock o hub)")
+        return (s.get("max_displays") or 4, "un PC de sobremesa con gráfica suele admitir 3-4 monitores") if t == "desktop" else \
+               (s.get("max_displays") or 3, "un portátil Windows suele admitir 2-3 monitores (con dock o hub)")
     gen, tier = s.get("chip_gen") or 0, s.get("chip_tier") or "base"
-    if t == "laptop":
-        if tier == "max":
-            return 4, "los MacBook Pro con chip Max admiten hasta 4 pantallas externas"
-        if tier == "pro":
-            return 2, "los MacBook Pro con chip Pro admiten 2 pantallas externas"
-        if gen >= 4:
-            return 2, f"los Mac con M{gen} admiten 2 pantallas externas"
-        if gen == 3 and s.get("model_line") == "air":
-            return 1, "el MacBook Air M3 admite 1 pantalla externa (2 con la tapa cerrada)"
-        return 1, f"los Mac con chip M{gen or '1/2/3'} básico sólo admiten 1 pantalla externa"
-    if tier in ("max", "ultra"):
-        return 5, "los Mac Studio admiten 4-5 pantallas"
-    if tier == "pro" or gen >= 4:
-        return 3, "el Mac mini con M4 / M4 Pro admite 3 pantallas"
-    return 2, "el Mac mini con M1/M2 admite 2 pantallas"
+    chip = f"M{gen or '?'}{devices.TIER_NAME.get(tier, '')}"
+    if s.get("max_displays"):
+        n = s["max_displays"]
+        note = f" ({s['displays_note']})" if s.get("displays_note") else ""
+        return n, f"el {'MacBook ' + (s.get('model_line') or '').title() if t == 'laptop' else 'Mac'} con {chip} admite " \
+                  f"{n} pantalla{'s' if n > 1 else ''} externa{'s' if n > 1 else ''}{note}"
+    spec = devices.mac_laptop_specs(s.get("model_line") or "pro", s.get("screen_in") or 14, gen or 4, tier) if t == "laptop" \
+        else devices.mac_desktop_specs(s.get("model_line") or "mini", gen or 4, tier)
+    return max_external_displays({**it, "specs": {**s, "max_displays": spec["max_displays"],
+                                                  "displays_note": spec.get("displays_note", "")}})
 
+
+class Ctx:
+    def __init__(self, desk: dict[str, Any]):
+        self.items = desk.get("items", [])
+        self.by = {t: [i for i in self.items if i.get("type") == t] for t in ITEM_TYPES}
+        self.computers = self.by["laptop"] + self.by["desktop"]
+        self.monitors, self.ps5, self.phones, self.tablets = self.by["monitor"], self.by["ps5"], self.by["phone"], self.by["tablet"]
+        self.macs = [c for c in self.computers if self.s(c).get("platform") == "mac"]
+        self.pcs = [c for c in self.computers if self.s(c).get("platform") != "mac"]
+        profile = storage.read_user("profile", {"devices": [], "uses": [], "priority": 0.5})
+        self.profile = profile
+        self.uses = profile.get("uses") or []
+        self.gaming_pc = any(self.s(c).get("gpu_tier") == "high" for c in self.pcs) or \
+            (bool(self.pcs) and any(u.startswith("gaming") for u in self.uses))
+        self.gaming = bool(self.ps5) or self.gaming_pc or any(u.startswith("gaming") for u in self.uses)
+        self.work = any(u in ("programming", "office", "photo_video") for u in self.uses) or bool(self.computers and not self.gaming_pc)
+
+    @staticmethod
+    def s(it: dict[str, Any]) -> dict[str, Any]:
+        return it.get("specs") or {}
+
+    @staticmethod
+    def name(it: dict[str, Any]) -> str:
+        return it.get("model") or TYPE_NAME.get(it.get("type", ""), "")
+
+    def has_bt(self, h: dict[str, Any]) -> bool:
+        s = self.s(h)
+        if h["type"] in ("phone", "tablet") or s.get("platform") == "mac":
+            return True
+        return bool(s.get("bt", h["type"] == "laptop"))
+
+    def usb_a(self, h: dict[str, Any]) -> bool:
+        return bool((self.s(h).get("ports") or {}).get("usb_a"))
+
+
+Compat = tuple[float, list[str], list[str]]  # (0-100, a favor, en contra)
+
+
+def _conn(a: dict[str, Any], h: dict[str, Any], ctx: Ctx) -> str | None:
+    """Cómo se conecta un teclado/ratón a un equipo (o None si no se puede)."""
+    if a.get("bt") and ctx.has_bt(h):
+        return "Bluetooth"
+    if h["type"] in ("laptop", "desktop") and a.get("receiver"):
+        return f"receptor {a['receiver'].title()}" + ("" if ctx.usb_a(h) else " con adaptador USB-C")
+    if h["type"] in ("laptop", "desktop") and not a.get("wireless", True):
+        return "cable" + ("" if ctx.usb_a(h) or a.get("usb_c") else " con adaptador")
+    return None
+
+
+def _input_compat(a: dict[str, Any], ctx: Ctx, keyboard: bool) -> Compat:
+    hosts = ctx.computers + ctx.tablets
+    if not hosts:
+        return 0, [], ["No tienes ordenador ni tablet en la mesa"]
+    score, pros, cons = 100.0, [], []
+    for h in hosts:
+        conn = _conn(a, h, ctx)
+        if not conn:
+            score -= 40
+            cons.append(f"{ctx.name(h)}: no se puede conectar" + (" (no tiene Bluetooth)" if a.get("bt") else ""))
+            continue
+        if "adaptador" in conn:
+            score -= 5
+        pros.append(f"{ctx.name(h)} ({conn})")
+        mac = ctx.s(h).get("platform") == "mac" or ctx.s(h).get("os") == "ios"
+        if keyboard and mac and a.get("layout") == "win":
+            score -= 15
+            cons.append(f"Teclas de Windows: en {ctx.name(h)} las teclas ⌘/⌥ cambian de sitio")
+        if keyboard and not mac and a.get("layout") == "mac":
+            score -= 30
+            cons.append(f"Teclado de Mac: en {ctx.name(h)} (Windows) faltan teclas")
+    n = len(hosts)
+    multi = a.get("multi") or 1
+    if n >= 2:
+        if multi >= n:
+            pros.append(f"Cambia entre tus {n} equipos con un botón")
+        else:
+            score -= 15 * (min(n, 3) - multi)
+            cons.append(f"Sólo se empareja con {multi} equipo{'s' if multi > 1 else ''} a la vez (tienes {n})")
+    if keyboard:
+        if a.get("touch_id") and any(m["type"] == "desktop" for m in ctx.macs):
+            pros.append("Touch ID en tu Mac de sobremesa")
+        if ctx.gaming_pc and a.get("mechanical"):
+            score += 5
+            pros.append("Mecánico: más preciso para jugar")
+        if a.get("backlit"):
+            pros.append("Retroiluminado")
+    else:
+        if ctx.gaming_pc and a.get("gaming"):
+            score += 5
+            pros.append("Baja latencia para jugar en el PC")
+        elif a.get("gaming") and not ctx.gaming_pc:
+            score -= 12
+            cons.append("Pensado para juegos de PC: para trabajar hay ratones más cómodos")
+        if ctx.work and a.get("ergonomic"):
+            score += 4
+            pros.append("Ergonómico para muchas horas")
+    return max(0.0, min(100.0, score)), pros, cons
+
+
+def compat_keyboard(a: dict[str, Any], ctx: Ctx) -> Compat:
+    return _input_compat(a, ctx, True)
+
+
+def compat_mouse(a: dict[str, Any], ctx: Ctx) -> Compat:
+    return _input_compat(a, ctx, False)
+
+
+def compat_headset(a: dict[str, Any], ctx: Ctx) -> Compat:
+    hosts = ctx.ps5 + ctx.computers + ctx.phones + ctx.tablets
+    if not hosts:
+        return 0, [], ["Nada a lo que conectarlos"]
+    score, pros, cons = 100.0, [], []
+    for h in hosts:
+        n = ctx.name(h)
+        if h["type"] == "ps5":
+            if a.get("ps5_wireless"):
+                pros.append(f"{n} (inalámbricos)")
+            elif a.get("ps5_wired") or a.get("wired"):
+                score -= 8
+                pros.append(f"{n} (con cable al mando)")
+            else:
+                score -= 35
+                cons.append(f"{n}: la PS5 no admite cascos Bluetooth")
+        elif h["type"] in ("phone", "tablet"):
+            if a.get("bt"):
+                pros.append(f"{n} (Bluetooth)")
+            elif a.get("wired") and ctx.s(h).get("os") == "android":
+                score -= 10
+                pros.append(f"{n} (con cable USB-C/adaptador)")
+            else:
+                score -= 15
+                cons.append(f"{n}: sin Bluetooth y sin jack en el móvil")
+        else:
+            conn = "Bluetooth" if a.get("bt") and ctx.has_bt(h) else "receptor USB" if a.get("dongle") else \
+                "cable" if a.get("wired") else None
+            if conn:
+                pros.append(f"{n} ({conn})")
+            else:
+                score -= 30
+                cons.append(f"{n}: no se puede conectar")
+    if ctx.ps5 and (ctx.phones or ctx.computers) and a.get("dongle") and a.get("bt"):
+        score += 5
+        pros.append("Juegas y a la vez oyes el móvil (receptor + Bluetooth)")
+    if a.get("apple_switch") and ctx.macs and any(ctx.s(p).get("os") == "ios" for p in ctx.phones):
+        pros.append("Pasan solos del iPhone al Mac")
+    if a.get("multipoint") and len([h for h in hosts if h["type"] != "ps5"]) >= 2:
+        pros.append("Conectados a dos dispositivos a la vez")
+    if ctx.work and a.get("anc"):
+        score += 4
+        pros.append("Cancelación de ruido para concentrarte")
+    if ctx.gaming and a.get("form") == "in_ear":
+        score -= 5
+    return max(0.0, min(100.0, score)), pros, cons
+
+
+def compat_light(a: dict[str, Any], ctx: Ctx) -> Compat:
+    if not ctx.monitors:
+        return 0, [], ["Necesitas un monitor donde apoyarla"]
+    score, pros, cons = 100.0, [], []
+    for m in ctx.monitors:
+        if ctx.s(m).get("curved") and not a.get("curved_ok"):
+            score -= 50
+            cons.append(f"{ctx.name(m)} es curvo: esta lámpara es para pantallas planas")
+        else:
+            pros.append(f"Encima de {ctx.name(m)}")
+    if a.get("remote"):
+        pros.append("Mando para el brillo y el color")
+    if a.get("auto_dim"):
+        pros.append("Ajusta el brillo sola")
+    return max(0.0, score), pros, cons
+
+
+def compat_hub(a: dict[str, Any], ctx: Ctx) -> Compat:
+    laptops = ctx.by["laptop"]
+    if not laptops:
+        return 0, [], ["Es para portátiles"]
+    score, pros, cons = 100.0, [], []
+    for c in laptops:
+        s = ctx.s(c)
+        if a.get("kind") == "dock" and not (s.get("ports") or {}).get("thunderbolt"):
+            score -= 60
+            cons.append(f"{ctx.name(c)} no tiene Thunderbolt: el dock iría muy limitado")
+            continue
+        pros.append(ctx.name(c))
+        need = s.get("charge_w") or 0
+        if a.get("pd_w") and need and a["pd_w"] < need:
+            score -= 5
+            cons.append(f"Carga a {a['pd_w']} W ({ctx.name(c)} admite {need} W): algo más lento")
+    four_k = [m for m in ctx.monitors if (ctx.s(m).get("res_w") or 0) >= 3840]
+    if four_k and a.get("kind") == "hub":
+        if a.get("hdmi_4k60"):
+            pros.append(f"4K a 60 Hz en {ctx.name(four_k[0])}")
+        else:
+            score -= 30
+            cons.append("Sólo 4K a 30 Hz: se nota a tirones")
+    if len(ctx.monitors) >= 2 and ctx.macs and a.get("kind") == "hub":
+        cons.append("macOS no extiende 2 monitores por un hub HDMI: duplica la imagen (usa un dock Thunderbolt)")
+        score -= 15
+    return max(0.0, score), pros, cons
+
+
+def compat_charger(a: dict[str, Any], ctx: Ctx) -> Compat:
+    laptops = [c for c in ctx.by["laptop"]]
+    need = max([ctx.s(c).get("charge_w") or 65 for c in laptops] or [20])
+    score, pros, cons = 100.0, [], []
+    if a.get("max_w", 0) >= need:
+        pros.append(f"Suficiente para {ctx.name(laptops[0])} ({need} W)" if laptops else "Carga rápida del móvil")
+    else:
+        score -= 25
+        cons.append(f"{ctx.name(laptops[0])} carga hasta {need} W: con {a['max_w']} W irá más lento")
+    if ctx.phones and a.get("ports", 1) >= 2:
+        pros.append("Además carga el móvil a la vez")
+    return score, pros, cons
+
+
+def compat_arm(a: dict[str, Any], ctx: Ctx) -> Compat:
+    mons = ctx.monitors
+    if not mons:
+        return 0, [], ["Necesitas un monitor"]
+    score, pros, cons = 100.0, [], []
+    biggest = max(ctx.s(m).get("size_in") or 27 for m in mons)
+    if biggest > a.get("max_in", 32):
+        score -= 60
+        cons.append(f"Tu monitor de {biggest}\" es demasiado grande (hasta {a.get('max_in')}\")")
+    else:
+        pros.append(f"Sujeta tu monitor de {biggest}\"")
+    if len(mons) >= 2 and not a.get("dual"):
+        score -= 25
+        cons.append("Sólo sujeta una pantalla (tienes 2)")
+    if len(mons) == 1 and a.get("dual"):
+        score -= 20
+        cons.append("Es doble y sólo tienes 1 monitor")
+    if len(mons) >= 2 and a.get("dual"):
+        pros.append("Tus 2 monitores a la misma altura")
+    return max(0.0, score), pros, cons
+
+
+def compat_webcam(a: dict[str, Any], ctx: Ctx) -> Compat:
+    hosts = [c for c in ctx.computers if not ctx.s(c).get("camera")]
+    if not hosts:
+        return 0, [], ["Tus ordenadores ya tienen cámara"]
+    score, pros, cons = 100.0, [], []
+    for h in hosts:
+        if a.get("usb") == "usb_a" and not ctx.usb_a(h):
+            score -= 10
+            cons.append(f"{ctx.name(h)} no tiene USB-A: necesitas adaptador")
+        else:
+            pros.append(f"{ctx.name(h)} (no trae cámara)")
+    return max(0.0, score), pros, cons
+
+
+def compat_speakers(a: dict[str, Any], ctx: Ctx) -> Compat:
+    pros = [ctx.name(c) for c in ctx.computers]
+    if a.get("bt") and ctx.phones:
+        pros.append("Música del móvil por Bluetooth")
+    return 100.0, pros, []
+
+
+def compat_mousepad(a: dict[str, Any], ctx: Ctx) -> Compat:
+    pros = []
+    if (a.get("w_cm") or 0) >= 80:
+        pros.append("Caben el teclado y el ratón")
+    return 100.0, pros, []
+
+
+COMPAT: dict[str, Callable[[dict[str, Any], Ctx], Compat]] = {
+    "keyboard": compat_keyboard, "mouse": compat_mouse, "headset": compat_headset, "light": compat_light,
+    "hub": compat_hub, "charger": compat_charger, "arm": compat_arm, "webcam": compat_webcam,
+    "speakers": compat_speakers, "mousepad": compat_mousepad,
+}
+
+
+# ------------------------------------------------------------------ recomendaciones
 
 def _priced(product: dict[str, Any], today: date | None) -> dict[str, Any]:
     pricing = search._priced(product, "accessory", today)
@@ -206,65 +371,156 @@ def _priced(product: dict[str, Any], today: date | None) -> dict[str, Any]:
 
 
 SECTIONS = [
+    ("missing", "🧩", "Lo que te falta", "Elegido para que funcione con todos tus dispositivos, con buena calidad y buen precio."),
+    ("upgrades", "⭐", "Mejoras que compensan", "Mejor que lo que ya tienes y por menos de lo que pagaste (o de su precio de referencia)."),
     ("connect", "🔌", "Para conectarlo todo", "Hubs, docks, cables y cargadores para tus dispositivos."),
     ("monitors", "🖥️", "Más monitores compatibles", "Pantallas que puedes añadir y que encajan con lo que tienes."),
-    ("desk", "🪑", "Escritorio y ergonomía", "Luz de monitor, alfombrilla, brazos, soportes, teclado y ratón."),
-    ("audio", "🎧", "Audio", "Cascos que valen para tus dispositivos."),
+    ("extras", "🪑", "Extras útiles", "Soportes, carga del móvil, almacenamiento y ergonomía."),
     ("ps5", "🎮", "Para tu PS5", "Accesorios oficiales y mejoras de la consola."),
-    ("upgrades", "⭐", "Mejoras recomendadas", "Cambios que mejoran tu setup de verdad."),
 ]
+
+PLACE_TYPE = {"light": "light", "mousepad": "mousepad", "keyboard": "keyboard", "mouse": "mouse", "headset": "headset",
+              "webcam": "webcam", "hub": "hub", "speakers": "speakers", "arm": "arm"}
+
+
+class Recs:
+    def __init__(self, ctx: Ctx, today: date | None):
+        self.ctx, self.today = ctx, today
+        self.acc = storage.load_catalog("accessories")
+        self.by_id = {a["id"]: a for a in self.acc}
+        self.out: dict[str, list[dict[str, Any]]] = {k: [] for k, *_ in SECTIONS}
+        self.seen: set[str] = set()
+        self._prices: dict[str, dict[str, Any]] = {}
+
+    def pricing(self, p: dict[str, Any]) -> dict[str, Any]:
+        if p["id"] not in self._prices:
+            self._prices[p["id"]] = _priced(p, self.today)
+        return self._prices[p["id"]]
+
+    def rec(self, p: dict[str, Any], reason: str, for_items: list[dict[str, Any]] | None = None, prio: int = 2,
+            compat: Compat | None = None) -> dict[str, Any]:
+        c = compat or (COMPAT[p["kind"]](p.get("specs", {}), self.ctx) if p["kind"] in COMPAT else None)
+        return {"product": p, "reason": reason, "priority": prio, "pricing": self.pricing(p),
+                "for": [i["id"] for i in (for_items or [])], "links": search.store_links(p["search_query"]),
+                "placeable": p["kind"] in PLACE_TYPE, "place_type": PLACE_TYPE.get(p["kind"]),
+                "quality": p.get("quality"), "badges": [],
+                "compat": {"score": round(c[0]), "pros": c[1], "cons": c[2]} if c else None}
+
+    def add(self, section: str, acc_id: str, reason: str, for_items: list[dict[str, Any]] | None = None, prio: int = 2) -> None:
+        if acc_id in self.seen or acc_id not in self.by_id:
+            return
+        self.seen.add(acc_id)
+        self.out[section].append(self.rec(self.by_id[acc_id], reason, for_items, prio))
+
+    def ranked(self, kind: str, exclude: set[str] = frozenset()) -> list[dict[str, Any]]:
+        """Candidatos de un tipo ordenados por compatibilidad y calidad, penalizando lo que es caro para su tipo."""
+        cands = []
+        for p in self.acc:
+            if p["kind"] != kind or p["id"] in exclude:
+                continue
+            c = COMPAT[kind](p.get("specs", {}), self.ctx)
+            price = self.pricing(p)["final_price"] or p["ref_price"]
+            cands.append({"p": p, "compat": c, "price": price, "value": (p.get("quality") or 50) / max(price, 1)})
+        prices = sorted(c["price"] for c in cands)
+        median = prices[len(prices) // 2] if prices else 1
+        for c in cands:
+            # mitad compatibilidad, mitad calidad; lo que pase de la mediana de precio de su tipo resta
+            c["score"] = 0.5 * c["compat"][0] + 0.5 * (c["p"].get("quality") or 50) - \
+                10 * max(0.0, math.log2(c["price"] / max(median, 1)))
+        return sorted(cands, key=lambda c: -c["score"])
+
+    def best_of(self, kind: str, why: str, for_items: list[dict[str, Any]], prio: int = 2, n: int = 2) -> None:
+        """Lo mejor de un tipo que te falta: la opción más completa y, si es otra, la más barata que cumple."""
+        cands = [c for c in self.ranked(kind) if c["compat"][0] >= 60]
+        if not cands:
+            return
+        picks = [(cands[0], "🏆 Mejor opción para tu escritorio")]
+        cheap = sorted([c for c in cands[1:] if c["compat"][0] >= 75 and (c["p"].get("quality") or 0) >= 65],
+                       key=lambda c: c["price"])
+        if cheap and cheap[0]["price"] < cands[0]["price"] * 0.8 and n >= 2:
+            picks.append((cheap[0], "💶 La más barata que cumple"))
+        elif len(cands) > 1 and n >= 2:
+            picks.append((cands[1], "🥈 Alternativa"))
+        for c, badge in picks:
+            if c["p"]["id"] in self.seen:
+                continue
+            self.seen.add(c["p"]["id"])
+            r = self.rec(c["p"], why, for_items, prio, c["compat"])
+            r["badges"].append(badge)
+            self.out["missing"].append(r)
 
 
 def recommend(desk: dict[str, Any] | None = None, today: date | None = None) -> dict[str, Any]:
     desk = desk if desk is not None else read_desk()
-    items = desk.get("items", [])
-    by = {t: [i for i in items if i.get("type") == t] for t in ITEM_TYPES}
-    computers = by["laptop"] + by["desktop"]
-    monitors, ps5 = by["monitor"], by["ps5"]
-    acc = {a["id"]: a for a in storage.load_catalog("accessories")}
-    recs: dict[str, list[dict[str, Any]]] = {k: [] for k, *_ in SECTIONS}
-    seen: set[str] = set()
+    ctx = Ctx(desk)
+    R = Recs(ctx, today)
+    by, computers, monitors, ps5 = ctx.by, ctx.computers, ctx.monitors, ctx.ps5
     notes: list[str] = []
+    s = ctx.s
 
-    def add(section: str, acc_id: str, reason: str, for_items: list[dict[str, Any]] | None = None, prio: int = 2) -> None:
-        if acc_id in seen or acc_id not in acc:
-            return
-        seen.add(acc_id)
-        p = acc[acc_id]
-        recs[section].append({"product": p, "reason": reason, "priority": prio, "pricing": _priced(p, today),
-                              "for": [i["id"] for i in (for_items or [])], "links": search.store_links(p["search_query"]),
-                              "placeable": p["kind"] in ("light", "mousepad", "keyboard", "mouse", "headset")})
-
-    mon_usbc = [m for m in monitors if (m.get("specs") or {}).get("usb_c")]
-    mon_hdmi21 = [m for m in monitors if (m.get("specs") or {}).get("hdmi21")]
-    mon_dp = [m for m in monitors if (m.get("specs") or {}).get("dp")]
+    # --- lo que te falta (elegido por compatibilidad con todo lo demás)
+    hosts_txt = ", ".join(ctx.name(h) for h in computers + ctx.tablets)
+    if computers and not by["keyboard"]:
+        R.best_of("keyboard", f"No tienes teclado en la mesa. Elegido para {hosts_txt}.", computers + ctx.tablets, 1)
+    if computers and not by["mouse"]:
+        R.best_of("mouse", f"No tienes ratón en la mesa. Elegido para {hosts_txt}.", computers + ctx.tablets, 1)
+    if not by["headset"] and (computers or ps5):
+        R.best_of("headset", "No tienes cascos. Elegidos para " + ", ".join(ctx.name(h) for h in ps5 + computers + ctx.phones) + ".",
+                  ps5 + computers + ctx.phones, 2)
+    if monitors and not by["light"]:
+        R.best_of("light", "Ilumina la mesa sin reflejos en la pantalla y cansa menos la vista.", monitors, 2)
+    if monitors and not by["arm"]:
+        R.best_of("arm", "Pantalla a la altura de los ojos y la mesa libre.", monitors, 3, n=1)
+    if not by["mousepad"] and (by["keyboard"] or by["mouse"] or computers):
+        R.best_of("mousepad", "Teclado y ratón sobre la misma superficie y la mesa protegida.", by["keyboard"] + by["mouse"], 3, n=1)
+    no_cam = [c for c in computers if not s(c).get("camera")]
+    if no_cam and not by["webcam"]:
+        R.best_of("webcam", f"{ctx.name(no_cam[0])} no tiene cámara: para videollamadas.", no_cam, 2)
+        if ctx.macs and any(s(p).get("continuity_camera") for p in ctx.phones):
+            R.add("missing", "acc-magsafe-mount-mac", "Alternativa barata: tu iPhone como webcam del Mac (Cámara de Continuidad).",
+                  ctx.phones + ctx.macs, 2)
+    desktops_no_audio = [c for c in by["desktop"] if not s(c).get("speakers") or s(c).get("platform") != "mac"]
+    if desktops_no_audio and not by["speakers"] and s(desktops_no_audio[0]).get("model_line") != "imac":
+        R.best_of("speakers", f"{ctx.name(desktops_no_audio[0])}: sonido de verdad sin ponerte los cascos.", desktops_no_audio, 3, n=1)
 
     # --- conectar
+    mon_usbc = [m for m in monitors if s(m).get("usb_c")]
+    mon_hdmi21 = [m for m in monitors if s(m).get("hdmi21")]
+    mon_dp = [m for m in monitors if s(m).get("dp")]
+    owns_hub = bool(by["hub"])
     for c in computers:
-        ports = (c.get("specs") or {}).get("ports") or {}
-        name = c.get("model") or "tu ordenador"
-        if c["type"] == "laptop" and ports.get("usb_c") and not ports.get("hdmi"):
-            add("connect", "acc-hub-usbc-hdmi", f"{name} sólo tiene USB-C: con un hub conectas un monitor por HDMI, "
-                "memorias USB y el cargador a la vez.", [c], 3 if mon_usbc else 1)
-        if c["type"] == "laptop" and ports.get("thunderbolt") and len(monitors) >= 2:
-            add("connect", "acc-dock-thunderbolt4", f"Tienes {len(monitors)} monitores: con un dock Thunderbolt conectas "
-                f"{name} con un solo cable (pantallas, carga y USB).", [c], 2)
+        ports = s(c).get("ports") or {}
+        name = ctx.name(c)
+        if c["type"] == "laptop" and ports.get("usb_c") and not ports.get("hdmi") and not owns_hub:
+            cands = [x for x in R.ranked("hub") if x["p"]["id"] == "acc-hub-usbc-hdmi"]
+            if cands and cands[0]["compat"][0] >= 50:
+                R.add("connect", "acc-hub-usbc-hdmi", f"{name} sólo tiene USB-C: con un hub conectas un monitor por HDMI, "
+                      "memorias USB y el cargador a la vez.", [c], 3 if mon_usbc else 1)
+        if c["type"] == "laptop" and ports.get("thunderbolt") and len(monitors) >= 2 and \
+                not any(s(h).get("kind") == "dock" for h in by["hub"]):
+            R.add("connect", "acc-dock-thunderbolt4", f"Tienes {len(monitors)} monitores: con un dock Thunderbolt conectas "
+                  f"{name} con un solo cable (pantallas, carga y USB).", [c], 2)
         if mon_usbc and ports.get("usb_c"):
-            pd = max((m.get("specs") or {}).get("usb_c_pd_w") or 0 for m in mon_usbc)
-            add("connect", "acc-cable-usbc-tb4", f"Tu monitor tiene USB-C: un solo cable lleva imagen y "
-                f"{'carga (' + str(pd) + ' W)' if pd else 'datos'} a {name}.", [c] + mon_usbc, 1)
+            pd = max(s(m).get("usb_c_pd_w") or 0 for m in mon_usbc)
+            need = s(c).get("charge_w") or 0
+            slow = f" Ojo: el monitor da {pd} W y {name} admite {need} W, cargará algo más lento." if pd and need and pd < need else ""
+            R.add("connect", "acc-cable-usbc-tb4", f"Tu monitor tiene USB-C: un solo cable lleva imagen y "
+                  f"{'carga (' + str(pd) + ' W)' if pd else 'datos'} a {name}.{slow}", [c] + mon_usbc, 1)
         if c["type"] == "laptop" and ports.get("usb_c") and mon_dp and not mon_usbc and not ports.get("hdmi"):
-            add("connect", "acc-cable-usbc-dp", f"Para conectar {name} directo a la entrada DisplayPort del monitor.", [c], 2)
-        if c["type"] == "desktop" and (c.get("specs") or {}).get("platform") != "mac" and \
-                any(((m.get("specs") or {}).get("refresh_hz") or 60) >= 120 and (m.get("specs") or {}).get("dp") for m in monitors):
-            add("connect", "acc-cable-dp14", "Tu monitor va a 120 Hz o más: por DisplayPort 1.4 sacas todos los Hz con "
-                "G-Sync/FreeSync desde el PC.", [c], 2)
+            R.add("connect", "acc-cable-usbc-dp", f"Para conectar {name} directo a la entrada DisplayPort del monitor.", [c], 2)
+        if c["type"] == "desktop" and s(c).get("platform") != "mac" and \
+                any((s(m).get("refresh_hz") or 60) >= 120 and s(m).get("dp") for m in monitors):
+            R.add("connect", "acc-cable-dp14", "Tu monitor va a 120 Hz o más: por DisplayPort 1.4 sacas todos los Hz con "
+                  "G-Sync/FreeSync desde el PC.", [c], 2)
     if ps5 and mon_hdmi21:
-        add("connect", "acc-cable-hdmi21", "Tu monitor tiene HDMI 2.1: con un cable Ultra High Speed la PS5 va a 4K/120 Hz "
-            "con VRR (el de la caja es corto).", ps5 + mon_hdmi21, 2)
-    if by["laptop"] or any((p.get("specs") or {}).get("connector") == "usb_c" for p in by["phone"]):
-        add("connect", "acc-charger-gan65", "Un cargador GaN de 65 W carga el portátil y el móvil a la vez con un solo enchufe.",
-            by["laptop"] + by["phone"], 3)
+        R.add("connect", "acc-cable-hdmi21", "Tu monitor tiene HDMI 2.1: con un cable Ultra High Speed la PS5 va a 4K/120 Hz "
+              "con VRR (el de la caja es corto).", ps5 + mon_hdmi21, 2)
+    usb_c_phones = [p for p in ctx.phones if s(p).get("connector") == "usb_c"]
+    if by["laptop"] or usb_c_phones:
+        need = max([s(c).get("charge_w") or 65 for c in by["laptop"]] or [20])
+        best = "acc-charger-gan100" if need > 70 else "acc-charger-gan65"
+        R.add("connect", best, f"Un cargador GaN carga {'el portátil y ' if by['laptop'] else ''}el móvil a la vez con un solo enchufe.",
+              by["laptop"] + ctx.phones, 3)
 
     # --- monitores: cuántos más caben y cuáles encajan
     owned_ids = {m.get("catalog_id") for m in monitors if m.get("catalog_id")}
@@ -275,91 +531,123 @@ def recommend(desk: dict[str, Any] | None = None, today: date | None = None) -> 
         room = limit - len(monitors)
         if room <= 0:
             notes.append(f"Ya tienes {len(monitors)} monitor(es) y {why}: no se recomiendan más pantallas para "
-                         f"{main.get('model') or 'tu ordenador'} (orientativo).")
+                         f"{ctx.name(main)} (orientativo).")
         else:
             notes.append(f"Puedes añadir {room} monitor(es) más: {why} (orientativo).")
     monitor_recs: list[dict[str, Any]] = []
-    devices = desk_devices(desk)
-    if devices or monitors:
-        profile = storage.read_user("profile", {"devices": [], "uses": [], "priority": 0.5})
-        ranked = search.search_monitors({**profile, "devices": devices}, uses=profile.get("uses") or None, today=today)
+    devs = desk_devices(desk)
+    if devs or monitors:
+        profile = ctx.profile
+        ranked = search.search_monitors({**profile, "devices": devs}, uses=profile.get("uses") or None, today=today)
         candidates = [r for r in ranked["results"] if r["product"]["id"] not in owned_ids]
         if room is None or room > 0:
             for r in candidates[:3]:
-                monitor_recs.append({**r, "reason": "Compatible con " + (", ".join(d["label"] or d["kind"] for d in devices)
+                monitor_recs.append({**r, "reason": "Compatible con " + (", ".join(d["label"] or d["kind"] for d in devs)
                                                                         or "tu escritorio"), "section": "monitors"})
-        # Mejora: un monitor del catálogo claramente mejor que el que tienes
+        # Mejora de tu monitor: mejor nota y más barato de lo que pagaste
+        cat_mons = {x["id"]: x for x in storage.load_catalog("monitors")}
         for m in monitors:
-            cat = next((x for x in storage.load_catalog("monitors") if x["id"] == m.get("catalog_id")), None)
+            cat = cat_mons.get(m.get("catalog_id"))
             if not cat:
                 continue
-            mine = evaluate(cat, devices, profile.get("uses") or [], profile.get("size_pref"))["fit"]
-            better = [r for r in candidates if r["eval"]["fit"] >= mine + 8]
+            mine = evaluate(cat, devs, profile.get("uses") or [], profile.get("size_pref"))["fit"]
+            budget, src = (m.get("paid"), "pagaste") if m.get("paid") else (cat.get("ref_price"), "es su precio de referencia (orientativo)")
+            better = [r for r in candidates if r["eval"]["fit"] >= mine + UPGRADE_GAIN and r["pricing"]["final_price"] <= budget]
             for r in better[:2]:
                 monitor_recs.append({**r, "section": "upgrades",
-                                     "reason": f"Encaja mejor con tus dispositivos que tu {m.get('model')} "
-                                               f"({r['eval']['fit']:.0f} frente a {mine:.0f} de 100)."})
+                                     "reason": f"Encaja mejor con tus dispositivos que tu {ctx.name(m)} "
+                                               f"({r['eval']['fit']:.0f} frente a {mine:.0f} de 100) y cuesta "
+                                               f"{r['pricing']['final_price']:.0f} €, menos de los {budget:.0f} € que {src}."})
+            if not better and m.get("paid"):
+                notes.append(f"Tu {ctx.name(m)} está bien: no hay un monitor claramente mejor por menos de los {budget:.0f} € que pagaste.")
+            if not better and not m.get("paid"):
+                notes.append(f"Pon cuánto pagaste por {ctx.name(m)} (✏️ en Mi escritorio) para buscar monitores mejores que cuesten menos.")
 
-    # --- escritorio
-    if monitors and not by["light"]:
-        add("desk", "acc-screenbar-xiaomi", "Iluminas la mesa sin reflejos en la pantalla y cansas menos la vista.", monitors, 2)
-        add("desk", "acc-screenbar-benq-halo", "La lámpara de monitor de referencia (también para monitores curvos).", monitors, 3)
-    if not by["mousepad"] and (by["keyboard"] or by["mouse"] or computers):
-        add("desk", "acc-deskmat-xxl", "Teclado y ratón sobre la misma superficie y la mesa protegida.", by["keyboard"] + by["mouse"], 3)
-    if computers and not by["keyboard"]:
-        add("desk", "acc-logitech-mx-keys-s", "Un teclado para varios ordenadores: cambias con una tecla"
-            + (" entre tus " + str(len(computers)) + " equipos." if len(computers) > 1 else "."), computers, 2)
-    if computers and not by["mouse"]:
-        add("desk", "acc-logitech-mx-master-3s", "Ratón ergonómico para trabajar muchas horas (Mac y Windows).", computers, 2)
-    if len(monitors) >= 2:
-        add("desk", "acc-monitor-arm-dual", "Tus dos monitores a la misma altura y juntos, con la mesa libre.", monitors, 2)
-    elif monitors:
-        add("desk", "acc-monitor-arm", "Pantalla a la altura de los ojos y más espacio en la mesa.", monitors, 3)
-    if by["laptop"] and monitors:
-        add("desk", "acc-laptop-stand", "Con el portátil elevado, su pantalla queda a la altura del monitor.", by["laptop"], 3)
-    for p in by["phone"]:
-        if (p.get("specs") or {}).get("magsafe"):
-            add("desk", "acc-wireless-charger-3in1", "Tu iPhone tiene MagSafe: carga sin cables junto al reloj y los auriculares.", [p], 3)
+    # --- mejoras de lo que ya tienes: mejor calidad y más barato que lo que pagaste
+    for it in ctx.items:
+        kind = it.get("type")
+        if kind not in COMPAT or kind in ("charger",):
+            continue
+        entry = devices.by_id(it.get("catalog_id"))
+        owned_q = (entry or {}).get("quality")
+        name = ctx.name(it)
+        if owned_q is None:
+            if it.get("model"):
+                notes.append(f"No reconocemos el modelo de {name}: elígelo de la lista al editarlo para ver mejoras.")
+            continue
+        budget, src = (it.get("paid"), "pagaste") if it.get("paid") else ((entry or {}).get("ref_price"), "cuesta el tuyo (orientativo)")
+        if not budget:
+            notes.append(f"Pon cuánto pagaste por {name} (✏️ en Mi escritorio) para ver mejoras que compensen.")
+            continue
+        mine_c = COMPAT[kind](it.get("specs") or {}, ctx)[0]
+
+        def better_than_mine(c: dict[str, Any]) -> str | None:
+            q = c["p"].get("quality") or 0
+            if q >= owned_q + UPGRADE_GAIN and c["compat"][0] >= mine_c - 5:
+                return f"más calidad ({q} frente a {owned_q} de 100, orientativo)"
+            if c["compat"][0] >= mine_c + 20 and q >= owned_q - 2:
+                return f"funciona con más de tus dispositivos (compatibilidad {c['compat'][0]:.0f} frente a {mine_c:.0f})"
+            return None
+
+        better = [(c, why) for c in R.ranked(kind, {it.get("catalog_id") or ""})
+                  if (why := better_than_mine(c)) and c["price"] <= budget]
+        if not better:
+            notes.append(f"Tu {name} está bien: no hay nada claramente mejor por menos de los {budget:.0f} € que {src}.")
+        for c, why in better[:2]:
+            if c["p"]["id"] in R.seen:
+                continue
+            R.seen.add(c["p"]["id"])
+            r = R.rec(c["p"], f"Mejora tu {name}: {why} y cuesta {c['price']:.0f} €, menos de los {budget:.0f} € que {src}.",
+                      [it], 2, c["compat"])
+            r["badges"].append("⬆️ Mejora")
+            R.out["upgrades"].append(r)
+
+    # --- extras
+    if len(monitors) and by["laptop"]:
+        R.add("extras", "acc-laptop-stand", "Con el portátil elevado, su pantalla queda a la altura del monitor.", by["laptop"], 3)
+    for p in ctx.phones:
+        ps = s(p)
+        if ps.get("magsafe") or ps.get("qi2"):
+            R.add("extras", "acc-wireless-charger-3in1", f"Tu {ctx.name(p)} tiene {'MagSafe' if ps.get('magsafe') else 'Qi2'}: "
+                  "carga sin cables junto al reloj y los auriculares.", [p], 3)
+        elif ps.get("qi"):
+            R.add("extras", "acc-qi-charger-stand", f"Tu {ctx.name(p)} carga sin cables: de pie en la mesa ves las notificaciones.", [p], 3)
         else:
-            add("desk", "acc-phone-stand", "El móvil a la vista para notificaciones y videollamadas.", [p], 3)
-
-    # --- audio
-    if not by["headset"]:
-        if ps5:
-            add("audio", "acc-ps-pulse-elite", "Audio 3D de PS5 y, a la vez, Bluetooth para el móvil.", ps5, 2)
-        if computers or ps5:
-            add("audio", "acc-hyperx-cloud-iii", "Con cable USB-C/USB-A/jack: los mismos cascos para "
-                + " y ".join(filter(None, ["el ordenador" if computers else "", "la PS5" if ps5 else ""])) + ".",
-                computers + ps5, 3)
+            R.add("extras", "acc-phone-stand", "El móvil a la vista para notificaciones y videollamadas.", [p], 3)
+    small = [c for c in ctx.macs if (s(c).get("storage_gb") or 9999) <= 512]
+    if small:
+        R.add("extras", "acc-ssd-samsung-t7", f"{ctx.name(small[0])} tiene {s(small[0])['storage_gb']} GB: un SSD externo para "
+              "Time Machine, fotos y proyectos.", small, 2)
 
     # --- PS5
     for p in ps5:
-        ed = (p.get("specs") or {}).get("edition")
+        ed = s(p).get("edition")
         if ed in ("digital", "pro"):
-            add("ps5", "acc-ps5-disc-drive", f"Tu PS5 {'Digital' if ed == 'digital' else 'Pro'} no tiene lector: con la unidad "
-                "oficial puedes jugar con discos (más baratos de segunda mano).", [p], 2)
-        add("ps5", "acc-dualsense", "Segundo mando para jugar a dobles.", [p], 3)
-        add("ps5", "acc-dualsense-charger", "Carga los mandos sin ocupar los USB de la consola.", [p], 3)
-        add("ps5", "acc-ssd-ps5-2tb", "Los juegos de PS5 ocupan 50-150 GB: con 2 TB más dejas de borrar juegos.", [p], 2)
+            R.add("ps5", "acc-ps5-disc-drive", f"Tu PS5 {'Digital' if ed == 'digital' else 'Pro'} no tiene lector: con la unidad "
+                  "oficial puedes jugar con discos (más baratos de segunda mano).", [p], 2)
+        R.add("ps5", "acc-dualsense", "Segundo mando para jugar a dobles.", [p], 3)
+        R.add("ps5", "acc-dualsense-charger", "Carga los mandos sin ocupar los USB de la consola.", [p], 3)
+        storage_gb = s(p).get("storage_gb") or 1000
+        R.add("ps5", "acc-ssd-ps5-2tb", f"Tu PS5 trae {storage_gb / 1000:g} TB y los juegos ocupan 50-150 GB: con 2 TB más dejas "
+              "de borrar juegos.", [p], 2 if storage_gb < 2000 else 3)
 
-    # --- mejoras: lo que hoy tiene buen precio
-    good = [r for sec in recs.values() for r in sec if r["pricing"]["good_price"]]
-    for r in good:
-        if r not in recs["upgrades"]:
-            recs["upgrades"].append({**r, "reason": "💸 Buen precio ahora. " + r["reason"]})
+    # --- lo que hoy tiene buen precio también va a mejoras
+    for sec in ("missing", "connect", "extras", "ps5"):
+        for r in R.out[sec]:
+            if r["pricing"]["good_price"] and "💸 Buen precio ahora" not in r["badges"]:
+                r["badges"].append("💸 Buen precio ahora")
 
     if ps5 and monitors and not mon_hdmi21:
-        where = ("Mira las «Mejoras recomendadas»." if any(m["section"] == "upgrades" for m in monitor_recs) else
+        where = ("Mira «Mejoras que compensan»." if any(m["section"] == "upgrades" for m in monitor_recs) else
                  "Mira «Más monitores compatibles»." if monitor_recs else "Busca uno con HDMI 2.1 en 🖥️ Monitores.")
         notes.append("Tus monitores no tienen HDMI 2.1: la PS5 irá como mucho a 60 Hz en 4K. " + where)
 
-    for sec in recs.values():
-        sec.sort(key=lambda r: (r["priority"], r["pricing"]["final_price"]))
+    for key in ("connect", "extras", "ps5", "upgrades"):
+        R.out[key].sort(key=lambda r: (r["priority"], r["pricing"]["final_price"]))
     sections = []
     for key, icon, title, desc in SECTIONS:
         mons = [m for m in monitor_recs if m["section"] == key]
-        if recs[key] or mons:
-            sections.append({"id": key, "icon": icon, "title": title, "desc": desc,
-                             "items": recs[key], "monitors": mons})
-    return {"sections": sections, "notes": notes, "count": sum(len(s["items"]) + len(s["monitors"]) for s in sections),
-            "empty": not items}
+        if R.out[key] or mons:
+            sections.append({"id": key, "icon": icon, "title": title, "desc": desc, "items": R.out[key], "monitors": mons})
+    return {"sections": sections, "notes": list(dict.fromkeys(notes)),
+            "count": sum(len(x["items"]) + len(x["monitors"]) for x in sections), "empty": not ctx.items}

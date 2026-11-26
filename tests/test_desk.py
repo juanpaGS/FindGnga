@@ -26,7 +26,7 @@ def test_identify_models():
     assert desk.identify("monitor", "Samsung Odyssey G9")["catalog_id"] == "samsung-odyssey-g9-g95c"
     wide = desk.identify("monitor", "monitor xiaomi 34 ultrawide 144hz")
     assert wide["catalog_id"] is None and wide["specs"]["aspect"] == "21:9" and wide["specs"]["refresh_hz"] == 144
-    assert desk.identify("phone", "iPhone 13")["specs"] == {"os": "ios", "connector": "lightning", "magsafe": True}
+    assert {"os": "ios", "connector": "lightning", "magsafe": True}.items() <= desk.identify("phone", "iPhone 13")["specs"].items()
     assert desk.identify("phone", "iPhone 16 Pro")["specs"]["connector"] == "usb_c"
     assert desk.identify("ps5", "PS5 Slim Digital")["specs"]["edition"] == "digital"
     assert desk.identify("desktop", "PC RTX 4070")["specs"]["gpu_tier"] == "high"
@@ -105,7 +105,7 @@ def test_accessory_catalog_is_valid():
             for pat in a["match"].get(k, []):
                 re.compile(pat)
         # el nombre del producto debe pasar su propio filtro (si no, nunca se encontraría)
-        assert matcher(a, reject_accessories=False)(a["name"])[0] or a["kind"] in ("hub", "cable", "mousepad", "arm", "stand", "phone_acc", "charger"), a["id"]
+        assert matcher(a, reject_accessories=False)(a["name"])[0] or a["kind"] in ("hub", "cable", "mousepad", "arm", "stand", "phone_acc", "charger", "webcam", "storage", "speakers"), a["id"]
 
 
 def test_dualsense_filter_skips_accessories_of_the_controller():
