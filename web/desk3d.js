@@ -1086,7 +1086,36 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   controls.enableDamping = !reducedMotion(); controls.dampingFactor = 0.08;
   controls.minDistance = 0.25; controls.maxDistance = 4; controls.maxPolarAngle = Math.PI * 0.495; controls.enablePan = true;
   controls.zoomToCursor = true;
-  controls.zoomSpeed = 2.4; controls.rotateSpeed = 0.9; controls.panSpeed = 1.1;
+  controls.rotateSpeed = 0.9; controls.panSpeed = 1.1;
+  /* Zoom propio: OrbitControls divide el desplazamiento entre 100, y el pellizco del trackpad manda pasos
+     de 1-5 px, así que acercaba casi nada. Aquí cada evento escala la distancia de forma exponencial
+     (pellizco = ctrlKey en macOS) y va hacia donde apunta el ratón. */
+  controls.enableZoom = false;
+  const onWheel = (e) => {
+    e.preventDefault();
+    const px = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1);
+    const k = e.ctrlKey ? 0.022 : 0.003;                 // pellizco mucho más sensible que la rueda
+    const f = Math.exp(clamp(px * k, -0.6, 0.6));
+    const off = camera.position.clone().sub(controls.target);
+    const len = off.length(), nl = clamp(len * f, controls.minDistance, controls.maxDistance);
+    if (Math.abs(nl - len) < 1e-5) return;
+    // acercarse hacia el punto bajo el cursor (sólo al acercar), como en un visor 3D profesional
+    if (nl < len) {
+      const r = canvas.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+      const ray = new THREE.Raycaster(); ray.setFromCamera(ndc, camera);
+      const hit = new V3();
+      if (ray.ray.intersectPlane(new THREE.Plane(new V3(0, 1, 0), -DESK_H), hit)) {
+        const b = tableBox(T);
+        hit.x = clamp(hit.x, b.x0, b.x1); hit.z = clamp(hit.z, b.z0, b.z1);
+        controls.target.lerp(new V3(hit.x, controls.target.y, hit.z), (1 - nl / len) * 0.6);
+      }
+    }
+    off.setLength(nl);
+    tween = null; userMoved = true;
+    camera.position.copy(controls.target).add(off); controls.update(); dirty();
+  };
+  canvas.addEventListener("wheel", onWheel, { passive: false });
   let userMoved = false, view = "iso", tween = null;
   controls.addEventListener("start", () => { userMoved = true; tween = null; });
 
@@ -1128,8 +1157,8 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   /* Cuarto a la medida de la mesa: un rincón recogido (pared del fondo + laterales), no una nave enorme */
   const roomBox = () => {
     const b = tableBox(T);
-    const halfX = Math.max(1.05, (b.x1 - b.x0) / 2 + 0.45);
-    return { x0: (b.x0 + b.x1) / 2 - halfX, x1: (b.x0 + b.x1) / 2 + halfX, zb: wallZ(), zf: b.z1 + 0.95, h: 2.4 };
+    const halfX = Math.max(0.95, (b.x1 - b.x0) / 2 + 0.38);
+    return { x0: (b.x0 + b.x1) / 2 - halfX, x1: (b.x0 + b.x1) / 2 + halfX, zb: wallZ(), zf: b.z1 + 0.7, h: 2.3 };
   };
   function setRoom() {
     const R = roomBox();
@@ -1143,7 +1172,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), new THREE.MeshStandardMaterial({ map: ftex, roughness: st.floor === "tiles" ? 0.35 : 0.85,
       color: dark ? 0x9a9a9a : 0xffffff }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0, cz); floor.receiveShadow = true; g.add(floor);
-    const wc = st.wall && /^#?[0-9a-f]{6}$/i.test(st.wall) ? parseInt(st.wall.replace("#", ""), 16) : (dark ? 0x2b2b2f : 0xf1ede6);
+    const wc = st.wall && /^#?[0-9a-f]{6}$/i.test(st.wall) ? parseInt(st.wall.replace("#", ""), 16) : (dark ? 0x2a2b2e : 0xeeece8);
     const wallM = mat(wc, { roughness: 0.95 });
     const sideM = mat(new THREE.Color(wc).multiplyScalar(0.9).getHex(), { roughness: 0.95 });
     const back = new THREE.Mesh(new THREE.PlaneGeometry(RW, R.h), wallM);
@@ -1155,9 +1184,6 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     // techo con una lámpara empotrada: cierra el cuarto por arriba
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), mat(dark ? 0x3a3a3e : 0xf7f5f1, { roughness: 1 }));
     ceil.rotation.x = Math.PI / 2; ceil.position.set(cx, R.h, cz); g.add(ceil);
-    const cornice = mat(new THREE.Color(wc).multiplyScalar(0.82).getHex(), { roughness: 0.9 });
-    g.add(at(box(RW, 0.05, 0.03, cornice), cx, R.h - 0.025, R.zb + 0.015));
-    for (const sx of [-1, 1]) g.add(at(box(0.03, 0.05, RD, cornice), (sx < 0 ? R.x0 + 0.015 : R.x1 - 0.015), R.h - 0.025, cz));
     const bTop = tableBox(T);
     // disco de una sola cara mirando hacia abajo: desde la vista cenital (cámara por encima del techo) no se ve
     const spot = new THREE.Mesh(new THREE.CircleGeometry(0.09, 32), new THREE.MeshStandardMaterial({ color: 0xffffff,
@@ -1166,15 +1192,10 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     const trim = mat(isLightHex(wc) ? 0xffffff : 0x1e1e21, { roughness: 0.6 });
     g.add(at(box(RW, 0.08, 0.015, trim), cx, 0.04, R.zb + 0.008));          // rodapiés
     for (const sx of [-1, 1]) g.add(at(box(0.015, 0.08, RD, trim), (sx < 0 ? R.x0 + 0.008 : R.x1 - 0.008), 0.04, cz));
-    // alfombra bajo la silla: ancla visualmente el espacio de trabajo
-    const b = tableBox(T);
-    const rug = new THREE.Mesh(new RoundedBoxGeometry(Math.min(RW - 0.3, (b.x1 - b.x0) + 0.5), 0.008, 1.5, 2, 0.004),
-      mat(dark ? 0x3a3936 : 0xd9d3c7, { roughness: 1 }));
-    rug.position.set((b.x0 + b.x1) / 2, 0.004, b.z1 - 0.15); rug.receiveShadow = true; g.add(rug);
     roomObj = g; roomKey = key; scene.add(g);
     const bg = new THREE.Color(wc).multiplyScalar(dark ? 0.55 : 0.78);
     scene.background = bg;
-    scene.fog = new THREE.Fog(bg, 3.2, 7);   // lo lejano se funde: la atención va a la mesa
+    scene.fog = new THREE.Fog(bg, 2.6, 5.5);   // lo lejano se funde: la atención va a la mesa
   }
 
   /* --- cámara: vistas fijas con transición suave (sin animación si se pide menos movimiento) */
@@ -1258,7 +1279,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     };
     const make = { plant: () => plant(1), lamp, books, mug };
     const rad = { plant: 0.08, lamp: 0.1, books: 0.13, mug: 0.05 };
-    const floorSpots = () => { const s = T.shape === "l_right" ? -1 : 1; return [[s * (W / 2 + 0.34), -D / 2 + 0.12], [-s * (W / 2 + 0.34), -D / 2 + 0.12], [s * (W / 2 + 0.34), 0.3]]; };
+    const floorSpots = () => { const s = T.shape === "l_right" ? -1 : 1; return [[s * (W / 2 + 0.2), -D / 2 + 0.12], [-s * (W / 2 + 0.2), -D / 2 + 0.12], [s * (W / 2 + 0.2), 0.3]]; };
     for (const k of ["plant", "lamp", "books", "mug"]) {
       if (!want.has(k)) continue;
       const spot = spots[k].find(([x, z]) => Math.abs(x) < W / 2 - 0.03 && Math.abs(z) < D / 2 - 0.03 && free(rects, x, z, rad[k]));
@@ -1341,7 +1362,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   /* Dentro de la mesa, pero dejando que sobresalga un poco (así se ve el aviso) */
   function clampPos(g, x, z, rot = g.rotation.y) {
     const s = g.userData.size || { w: 0.2, d: 0.2 }, b = tableBox(T);
-    if (s.floor) return [clamp(x, b.x0 - 0.35, b.x1 + 0.35), clamp(z, b.z0 + 0.12, b.z1 + 0.7)];
+    if (s.floor) return [clamp(x, b.x0 - 0.28, b.x1 + 0.28), clamp(z, b.z0 + 0.12, b.z1 + 0.55)];
     const [hx, hz] = halfExt(s, rot);
     const mx = Math.min(hx * 0.5, (b.x1 - b.x0) / 2), mz = Math.min(hz * 0.5, (b.z1 - b.z0) / 2);
     return [clamp(x, b.x0 + mx, b.x1 - mx), clamp(z, b.z0 + mz, b.z1 - mz)];
@@ -1813,6 +1834,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     get measures() { return measuresOn; },
     snapshot() { render(); return canvas.toDataURL("image/png"); },
     dispose() {
+      canvas.removeEventListener("wheel", onWheel);
       alive = false; cancelAnimationFrame(raf); clearTimeout(sayT); ro.disconnect(); io?.disconnect(); controls.dispose();
       container.removeEventListener("pointerdown", onDown, true);
       canvas.removeEventListener("pointermove", onPMove); canvas.removeEventListener("pointerup", onUp);

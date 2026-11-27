@@ -434,6 +434,17 @@ def api_calendar() -> dict[str, Any]:
     return storage.load_catalog_raw("events")
 
 
+@app.middleware("http")
+async def no_stale_web(request, call_next):
+    """La web cambia a menudo: el navegador debe comprobar cada vez si hay versión nueva (con ETag no se
+    vuelve a descargar si no cambió). Sin esto Safari/Chrome seguían usando app.js o desk3d.js antiguos."""
+    resp = await call_next(request)
+    path = request.url.path
+    if path == "/" or (path.startswith("/static/") and not path.startswith("/static/vendor/")):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
