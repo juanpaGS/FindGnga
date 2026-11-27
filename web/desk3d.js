@@ -1059,7 +1059,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     container.innerHTML = `<div class="desk3d-fallback" role="note">Tu navegador no puede mostrar 3D (WebGL desactivado). La lista y los avisos de medidas funcionan igual.</div>`;
     const noop = () => {};
     return { update: noop, setStyle: noop, setTable: noop, select: noop, focus: noop, preview: noop, rotate: noop, nudge: noop, setPos: noop,
-      cameraPreset: noop, toggleMeasures: () => false, markIssues: noop, describe: () => [], snapshot: () => null, dispose: noop, webgl: false };
+      cameraPreset: noop, zoomIn: noop, zoomOut: noop, toggleMeasures: () => false, markIssues: noop, describe: () => [], snapshot: () => null, dispose: noop, webgl: false };
   }
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1084,8 +1084,9 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   const controls = new OrbitControls(camera, canvas);
   controls.target.set(0, DESK_H + 0.16, 0);
   controls.enableDamping = !reducedMotion(); controls.dampingFactor = 0.08;
-  controls.minDistance = 0.25; controls.maxDistance = 6; controls.maxPolarAngle = Math.PI * 0.495; controls.enablePan = true;
+  controls.minDistance = 0.25; controls.maxDistance = 4; controls.maxPolarAngle = Math.PI * 0.495; controls.enablePan = true;
   controls.zoomToCursor = true;
+  controls.zoomSpeed = 2.4; controls.rotateSpeed = 0.9; controls.panSpeed = 1.1;
   let userMoved = false, view = "iso", tween = null;
   controls.addEventListener("start", () => { userMoved = true; tween = null; });
 
@@ -1124,22 +1125,45 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     sun.shadow.camera.updateProjectionMatrix();
   }
   const wallZ = () => tableBox(T).z0 - 0.1;
+  /* Cuarto a la medida de la mesa: un rincón recogido (pared del fondo + laterales), no una nave enorme */
+  const roomBox = () => {
+    const b = tableBox(T);
+    const halfX = Math.max(1.3, (b.x1 - b.x0) / 2 + 0.75);
+    return { x0: (b.x0 + b.x1) / 2 - halfX, x1: (b.x0 + b.x1) / 2 + halfX, zb: wallZ(), zf: b.z1 + 1.25, h: 2.5 };
+  };
   function setRoom() {
-    const key = JSON.stringify([st.floor, st.wall, round3(wallZ()), dark]);
+    const R = roomBox();
+    const key = JSON.stringify([st.floor, st.wall, round3(R.x0), round3(R.x1), round3(R.zb), round3(R.zf), dark]);
     if (key === roomKey) return;
     if (roomObj) { scene.remove(roomObj); disposeObj(roomObj); }
     const g = new THREE.Group();
+    const RW = R.x1 - R.x0, RD = R.zf - R.zb, cx = (R.x0 + R.x1) / 2, cz = (R.zb + R.zf) / 2;
     const fdraw = FLOORS[st.floor] || FLOORS.wood;
-    const ftex = canvasTex(512, 512, fdraw, [8, 8]);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), new THREE.MeshStandardMaterial({ map: ftex, roughness: st.floor === "tiles" ? 0.35 : 0.85,
+    const ftex = canvasTex(512, 512, fdraw, [Math.max(2, RW * 1.6), Math.max(2, RD * 1.6)]);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), new THREE.MeshStandardMaterial({ map: ftex, roughness: st.floor === "tiles" ? 0.35 : 0.85,
       color: dark ? 0x9a9a9a : 0xffffff }));
-    floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; g.add(floor);
+    floor.rotation.x = -Math.PI / 2; floor.position.set(cx, 0, cz); floor.receiveShadow = true; g.add(floor);
     const wc = st.wall && /^#?[0-9a-f]{6}$/i.test(st.wall) ? parseInt(st.wall.replace("#", ""), 16) : (dark ? 0x2b2b2f : 0xf1ede6);
-    const wall = new THREE.Mesh(new THREE.PlaneGeometry(14, 5), mat(wc, { roughness: 1 }));
-    wall.position.set(0, 2.5, wallZ()); wall.receiveShadow = true; g.add(wall);
-    g.add(at(box(14, 0.08, 0.015, mat(isLightHex(wc) ? 0xffffff : 0x1e1e21, { roughness: 0.6 })), 0, 0.04, wallZ() + 0.008));
+    const wallM = mat(wc, { roughness: 0.95 });
+    const sideM = mat(new THREE.Color(wc).multiplyScalar(0.9).getHex(), { roughness: 0.95 });
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(RW, R.h), wallM);
+    back.position.set(cx, R.h / 2, R.zb); back.receiveShadow = true; g.add(back);
+    for (const sx of [-1, 1]) {   // paredes laterales: encierran el rincón
+      const w = new THREE.Mesh(new THREE.PlaneGeometry(RD, R.h), sideM);
+      w.rotation.y = -sx * Math.PI / 2; w.position.set(sx < 0 ? R.x0 : R.x1, R.h / 2, cz); w.receiveShadow = true; g.add(w);
+    }
+    const trim = mat(isLightHex(wc) ? 0xffffff : 0x1e1e21, { roughness: 0.6 });
+    g.add(at(box(RW, 0.08, 0.015, trim), cx, 0.04, R.zb + 0.008));          // rodapiés
+    for (const sx of [-1, 1]) g.add(at(box(0.015, 0.08, RD, trim), (sx < 0 ? R.x0 + 0.008 : R.x1 - 0.008), 0.04, cz));
+    // alfombra bajo la silla: ancla visualmente el espacio de trabajo
+    const b = tableBox(T);
+    const rug = new THREE.Mesh(new RoundedBoxGeometry(Math.min(RW - 0.3, (b.x1 - b.x0) + 0.5), 0.008, 1.5, 2, 0.004),
+      mat(dark ? 0x3a3936 : 0xd9d3c7, { roughness: 1 }));
+    rug.position.set((b.x0 + b.x1) / 2, 0.004, b.z1 - 0.15); rug.receiveShadow = true; g.add(rug);
     roomObj = g; roomKey = key; scene.add(g);
-    scene.background = new THREE.Color(wc).multiplyScalar(0.85);
+    const bg = new THREE.Color(wc).multiplyScalar(dark ? 0.55 : 0.78);
+    scene.background = bg;
+    scene.fog = new THREE.Fog(bg, 3.2, 7);   // lo lejano se funde: la atención va a la mesa
   }
 
   /* --- cámara: vistas fijas con transición suave (sin animación si se pide menos movimiento) */
@@ -1152,14 +1176,14 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     const halfH = name === "top" ? bz / 2 + 0.24 : name === "iso" ? Math.max(0.45, (bz / 2) * dir.y + 0.35) : 0.5;
     const depthOff = name === "top" ? 0 : name === "side" ? bx / 2 : bz / 2;
     const dist = clamp(Math.max(halfW / Math.tan(hf), halfH / Math.tan(vf)) + depthOff * 0.6, 0.8, 9);
-    controls.maxDistance = Math.max(6, dist * 1.6);
+    controls.maxDistance = clamp(dist * 1.5, 2.2, 4.5);
     return { pos: target.clone().addScaledVector(dir, dist), target };
   }
-  function flyTo(pose, instant) {
+  function flyTo(pose, instant, dur = 650) {
     if (instant || reducedMotion()) {
       tween = null; camera.position.copy(pose.pos); controls.target.copy(pose.target); controls.update(); dirty(); return;
     }
-    tween = { p0: camera.position.clone(), q0: controls.target.clone(), p1: pose.pos, q1: pose.target, s: performance.now(), dur: 650 };
+    tween = { p0: camera.position.clone(), q0: controls.target.clone(), p1: pose.pos, q1: pose.target, s: performance.now(), dur };
   }
   function cameraPreset(name, { animate = true } = {}) {
     if (!VIEWS[name]) return;
@@ -1667,7 +1691,8 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   function zoom(f) {
     const off = camera.position.clone().sub(controls.target);
     off.setLength(clamp(off.length() * f, controls.minDistance, controls.maxDistance));
-    camera.position.copy(controls.target).add(off); userMoved = true; controls.update(); dirty();
+    userMoved = true;
+    flyTo({ pos: controls.target.clone().add(off), target: controls.target.clone() }, false, 220);
   }
   /* las flechas siguen a la cámara: ↑ aleja de ti en pantalla, → a la derecha de la pantalla */
   function screenAxes() {
@@ -1703,8 +1728,8 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
     } else if (k === "Enter" && selected) focus(selected);
     else if (k >= "1" && k <= "4") { const n = ["iso", "front", "top", "side"][+k - 1]; cameraPreset(n); say(VIEW_NAMES[n]); }
     else if (k === "m" || k === "M") { const on = toggleMeasures(); onMeasures?.(on); say(on ? "Medidas visibles" : "Medidas ocultas"); }
-    else if (k === "+" || k === "=") zoom(0.88);
-    else if (k === "-" || k === "_") zoom(1.14);
+    else if (k === "+" || k === "=") zoom(0.72);
+    else if (k === "-" || k === "_") zoom(1.4);
     else done = false;
     if (done) { e.preventDefault(); e.stopPropagation(); }
   };
@@ -1772,6 +1797,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   return {
     webgl: true,
     update, setStyle, setTable, select, focus, preview, rotate, nudge, setPos, cameraPreset, toggleMeasures, markIssues, describe,
+    zoomIn: () => zoom(0.72), zoomOut: () => zoom(1.4),
     get selected() { return selected; },
     get measures() { return measuresOn; },
     snapshot() { render(); return canvas.toDataURL("image/png"); },

@@ -167,21 +167,35 @@ async function viewDesk() {
     <div class="desk-layout">
       <div>
         <div class="desk3d" id="desk3d"><div class="desk3d-empty" id="deskEmpty">Tu escritorio está vacío.<br>Empieza añadiendo tu monitor u ordenador →</div>
-          <div class="desk3d-help small" aria-hidden="true">Arrastra un objeto para moverlo · Q/E lo giran · doble clic acerca · con el 3D enfocado (Tab): flechas, N, 1–4, M</div></div>
+          <div class="d3-zoomdock" role="group" aria-label="Zoom">
+            <button class="d3-zbtn" id="zoomIn" title="Acercar (tecla +)" aria-label="Acercar">＋</button>
+            <button class="d3-zbtn" id="zoomOut" title="Alejar (tecla −)" aria-label="Alejar">－</button>
+            <button class="d3-zbtn" id="zoomFit" title="Encuadrar la mesa (tecla 1)" aria-label="Encuadrar la mesa">⤢</button>
+          </div></div>
         <p class="sr-only" id="deskSummary"></p>
-        <div class="desk-toolbar d3-toolbar">
-          <button class="ghost small" id="rotL" title="Girar a la izquierda (Q)" aria-label="Girar el objeto elegido 15° a la izquierda">⟲ Girar</button>
-          <button class="ghost small" id="rotR" title="Girar a la derecha (E)" aria-label="Girar el objeto elegido 15° a la derecha">⟳ Girar</button>
-          <button class="ghost small" id="relayout" title="Volver a colocar todo automáticamente">↺ Recolocar todo</button>
-          <span class="d3-cams" role="group" aria-label="Cámara">${CAMS.map(([v, t, k]) =>
-            `<button class="ghost small" data-cam="${v}" aria-pressed="${v === "iso"}" title="${t} (tecla ${k})">${t}</button>`).join("")}</span>
-          <button class="ghost small" id="measBtn" aria-pressed="false" title="Medidas (tecla M)">📏 Medidas</button>
-          <button class="ghost small" id="snap">📸 Guardar imagen</button>
-          <span class="small muted" id="selName"></span>
+        <div class="d3-toolbar2">
+          <div class="d3-group" role="group" aria-labelledby="g-view"><span class="d3-glabel" id="g-view">👁️ Vista</span>
+            ${CAMS.map(([v, t, k]) => `<button class="ghost small" data-cam="${v}" aria-pressed="${v === "iso"}" title="${t} (tecla ${k})">${t} <kbd>${k}</kbd></button>`).join("")}</div>
+          <div class="d3-group" role="group" aria-labelledby="g-zoom"><span class="d3-glabel" id="g-zoom">🔍 Zoom</span>
+            <button class="ghost small" id="zoomIn2" title="Acercar (tecla +)">Acercar <kbd>+</kbd></button>
+            <button class="ghost small" id="zoomOut2" title="Alejar (tecla −)">Alejar <kbd>−</kbd></button></div>
+          <div class="d3-group" role="group" aria-labelledby="g-obj"><span class="d3-glabel" id="g-obj">✋ Objeto elegido: <b id="selName">ninguno</b></span>
+            <button class="ghost small" id="rotL" title="Girar a la izquierda (Q)" aria-label="Girar el objeto elegido 15° a la izquierda">⟲ Girar <kbd>Q</kbd></button>
+            <button class="ghost small" id="rotR" title="Girar a la derecha (E)" aria-label="Girar el objeto elegido 15° a la derecha">⟳ Girar <kbd>E</kbd></button></div>
+          <div class="d3-group" role="group" aria-labelledby="g-tools"><span class="d3-glabel" id="g-tools">🧰 Herramientas</span>
+            <button class="ghost small" id="measBtn" aria-pressed="false" title="Medidas (tecla M)">📏 Medidas <kbd>M</kbd></button>
+            <button class="ghost small" id="relayout" title="Volver a colocar todo automáticamente">↺ Recolocar todo</button>
+            <button class="ghost small" id="snap">📸 Guardar imagen</button></div>
         </div>
+        <details class="d3-keys"><summary>⌨️ Cómo se usa (ratón y teclado)</summary>
+          <ul class="small">
+            <li><b>Ratón:</b> arrastra un objeto para moverlo · arrastra el fondo para girar la vista · rueda o pellizco para acercar/alejar · clic derecho y arrastra para desplazarte · doble clic en un objeto para acercarte.</li>
+            <li><b>Teclado</b> (pulsa Tab hasta el 3D): flechas mueven el objeto (Mayús ×10, Alt 1 mm) · Q/E giran · N pasa al siguiente · Intro acerca · Esc suelta · 1–4 cámaras · M medidas · +/− zoom.</li>
+            <li>También puedes elegir un objeto en la lista «En tu mesa» y moverlo con sus botones.</li>
+          </ul></details>
         <div class="d3-fit" id="deskFit" aria-live="polite"></div>
         <section class="panel d3-selpanel" id="selPanel" hidden aria-labelledby="selTitle"></section>
-        <details class="panel style-panel d3-table-panel" id="tablePanel" open><summary>📐 Tu mesa (medidas reales)</summary>
+        <details class="panel style-panel d3-table-panel" id="tablePanel" open><summary><span class="d3-step">1</span> 📐 Tu mesa <span class="muted small">— medidas reales, forma, patas y material</span></summary>
           <div class="style-grid">
             <label class="small d3-wide">Modelo de mesa<select id="tPreset"><option value="custom">A medida (escribe tus medidas)</option></select></label>
             ${TABLE_NUM.map(([k, t, step]) => tableNum(k, t, step)).join("")}
@@ -191,7 +205,7 @@ async function viewDesk() {
           <p class="small muted" id="tNote"></p>
           <div class="actions" style="justify-content:flex-start"><button class="ghost small" id="tableReset">Restablecer mesa</button></div>
         </details>
-        <details class="panel style-panel" id="stylePanel"><summary>🎨 Ambiente</summary>
+        <details class="panel style-panel" id="stylePanel"><summary><span class="d3-step">3</span> 🎨 Ambiente <span class="muted small">— suelo, luz, pared y decoración</span></summary>
           <div class="style-grid">
             <label class="small">Suelo<select data-style="floor">${opt(STYLE_OPTS.floor)}</select></label>
             <label class="small">Luz<select data-style="light">${opt(STYLE_OPTS.light)}</select></label>
@@ -204,7 +218,8 @@ async function viewDesk() {
         </details>
       </div>
       <aside class="panel desk-side">
-        <h3>➕ Añadir al escritorio</h3>
+        <h3><span class="d3-step">2</span> ➕ Añade lo que tienes encima</h3>
+        <p class="small muted" style="margin:0 0 8px">Elige el tipo y escribe el modelo: se rellenan sus medidas y puertos.</p>
         <div class="type-grid" id="types">${DESK_TYPES.map((t) => `<button class="type-btn" data-type="${t.type}"><span aria-hidden="true">${t.emoji}</span>${esc(t.name)}</button>`).join("")}</div>
         <form id="addForm" class="add-form" hidden>
           <label class="small" for="addModel"><b id="addTitle"></b> · ¿qué modelo es?</label>
@@ -267,7 +282,7 @@ async function viewDesk() {
       b.setAttribute("aria-pressed", String(on)); b.closest("li")?.classList.toggle("sel", on);
     });
     const it = itemById(selected);
-    $("#selName").textContent = it ? `Seleccionado: ${nameOf(it)}` : "Haz clic en un objeto (o elígelo en la lista) para moverlo o girarlo";
+    $("#selName").textContent = it ? nameOf(it) : "ninguno (haz clic en uno o elígelo en la lista)";
     $("#rotL").disabled = $("#rotR").disabled = !it || ["light", "webcam"].includes(it.type);
     paintSel();
   }
@@ -409,6 +424,11 @@ async function viewDesk() {
     state.desk3d.cameraPreset(b.dataset.cam);
     document.querySelectorAll("[data-cam]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
   });
+  const zIn = () => state.desk3d.zoomIn?.(), zOut = () => state.desk3d.zoomOut?.();
+  $("#zoomIn").onclick = zIn; $("#zoomIn2").onclick = zIn;
+  $("#zoomOut").onclick = zOut; $("#zoomOut2").onclick = zOut;
+  $("#zoomFit").onclick = () => { state.desk3d.cameraPreset("iso");
+    document.querySelectorAll("[data-cam]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.cam === "iso"))); };
   $("#measBtn").onclick = () => { const on = state.desk3d.toggleMeasures(); $("#measBtn").setAttribute("aria-pressed", String(on)); };
   $("#snap").onclick = () => {
     const url = state.desk3d.snapshot?.();
