@@ -216,6 +216,9 @@ def assess(offers: list[dict[str, Any]], ref: float | None = None) -> None:
         elif o["suspicious"]:
             score -= 30
             w.append(f"Mucho más barato que el resto (mediana {median:.0f} €): puede ser un error o una estafa")
+        if o.get("from_index"):
+            score -= 15
+            w.append(f"Último precio visto el {str(o.get('seen_at', ''))[:10]} (la tienda no respondió hoy): compruébalo antes de comprar.")
         if o.get("inflated"):
             score -= 10
             w.append(f"Precio inflado: {str(round(o['inflated'], 1)).replace('.', ',')}× el precio oficial (escasez o reventa). Si puedes, espera.")

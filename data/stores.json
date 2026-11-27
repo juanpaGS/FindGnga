@@ -132,6 +132,17 @@
       },
       "trust": 3,
       "promo_tip": "Marketplace: mira la valoración del vendedor y si es particular o profesional. eBay publica cupones en campañas."
+    },
+    {
+      "id": "rebuy",
+      "name": "Rebuy (reacondicionado)",
+      "search_url": "https://www.rebuy.es/comprar/search?q={q}",
+      "shipping": {
+        "cost": 0,
+        "free_over": 0
+      },
+      "trust": 4,
+      "promo_tip": "Reacondicionado con 36 meses de garantía (según su web; compruébalo). Revisa el estado («Excelente», «Muy bueno»…) antes de comprar."
     }
   ],
   "aggregators": [

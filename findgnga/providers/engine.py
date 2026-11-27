@@ -25,7 +25,7 @@ from .. import settings as settings_mod
 from .. import storage
 from ..pricing import live
 from ..pricing.core import price_offer
-from . import chollometro, idealo, serpapi, stores, verify
+from . import price_index, chollometro, idealo, serpapi, stores, verify
 from .base import norm, condition_of, is_bundle, is_second_hand_site, matcher, new_client, price_band, resolve_store
 
 PROVIDERS = [
@@ -48,6 +48,10 @@ PROVIDERS = [
 ]
 
 CACHE_SECONDS = 20 * 60
+# Títulos que EMPIEZAN por un accesorio («Mando DualSense para PS5», «Unidad de disco PS5 Slim»): no son la consola
+CONSOLE_ACCESSORY_START = re.compile(r"^(unidad de disco|lector de discos?|mando|soporte|funda|skin|vinilo|pegatina|cargador|"
+                                     r"base de carga|estacion de carga|auriculares|cable|disco duro|ssd|ventilador|carcasa|"
+                                     r"protector|tapas?|placas?|cubierta|juego|bolsa|maleta|mochila)\b")
 NOT_CONSOLE = re.compile(r"\b(tv|televisor|television|smart tv|monitor|qled|oled|qned|miniled|barra de sonido|soundbar|proyector)\b")
 INFLATED_MAX = 1.6  # hasta 1,6× el tope normal se enseña como «precio inflado» en vez de descartarlo
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -169,6 +173,8 @@ def filter_listings(product: dict[str, Any], category: str, listings: list[dict[
                 reason = why
             elif category == "console" and NOT_CONSOLE.search(norm(it.get("title", ""))):
                 reason = "no es una consola (tele, monitor o similar que la menciona)"
+            elif category == "console" and CONSOLE_ACCESSORY_START.search(norm(it.get("title", "")).strip()):
+                reason = "accesorio para la consola, no la consola"
             elif it.get("reference"):
                 # Precio de referencia (Idealo): se muestra aunque esté por encima de lo normal, porque
                 # eso también es información (p. ej. sólo quedan vendedores de marketplace caros)
@@ -190,13 +196,26 @@ def filter_listings(product: dict[str, Any], category: str, listings: list[dict[
         if not sid:
             sid, name = resolve_store(it.get("store_name"), it.get("url"))
         second_hand = is_second_hand_site(it.get("store_name"), it.get("url"))
-        accepted.append({**it, "store": sid, "store_name": name or sid,
+        accepted.append({**it, "store": sid, "store_name": name or sid, "match_conf": match_confidence(product, it.get("title", "")),
                          "bundle": category == "console" and is_bundle(it.get("title", "")),
-                         "marketplace": it.get("marketplace") or second_hand,
+                         # un lector propio sabe si vende la tienda o un tercero (Rebuy vende él mismo)
+                         "marketplace": it["marketplace"] if it.get("direct") and "marketplace" in it
+                         else (it.get("marketplace") or second_hand),
                          "condition": "used" if second_hand else it.get("condition") or condition_of(it.get("title", ""))})
     for name, st in status.items():
         st["accepted"] = sum(1 for a in accepted if a["provider"] == name)
     return accepted, rejected
+
+
+def match_confidence(product: dict[str, Any], title: str) -> int:
+    """0-100: cuántas palabras clave del producto (búsqueda + códigos) aparecen en el título."""
+    t = norm(title)
+    words = [w for w in norm(product.get("search_query", "")).split() if len(w) >= 2]
+    hits = sum(1 for w in words if re.search(rf"\b{re.escape(w)}\b", t))
+    score = 100 * hits / len(words) if words else 60
+    if any(c.lower() in t.replace(" ", "") for c in product.get("codes", [])):
+        score = max(score, 95)
+    return int(round(score))
 
 
 def _price_all(product: dict[str, Any], category: str, accepted: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -325,6 +344,18 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
     finally:
         serpapi.fresh_only.reset(token)
     accepted, rejected = filter_listings(product, category, listings, status)
+    # Índice propio: tiendas que hoy no han respondido → su último precio conocido (con fecha)
+    if not only or "index" in only:
+        fresh_stores = {a["store"] for a in accepted if not a.get("reference")}
+        if not dry_run:
+            price_index.remember(product_id, accepted)
+        failed = {k for k, v in status.items() if not v.get("ok")}
+        old = [{**o, "seen_by": o.get("provider"), "provider": "index"}
+               for o in price_index.recall(product_id, fresh_stores, failed)]
+        old_ok, _ = filter_listings(product, category, old, {})
+        status["index"] = {"ok": bool(old_ok), "raw": len(old), "accepted": len(old_ok),
+                           "note": "últimos precios vistos (no comprobados ahora)"}
+        accepted += old_ok
     references = [a for a in accepted if a.get("reference")]
     accepted = [a for a in accepted if not a.get("reference")]
     accepted = await resolve_direct_links(product, category, accepted, rejected, status, cfg)
@@ -341,6 +372,9 @@ async def live_search(product_id: str, force: bool = False, dry_run: bool = Fals
     target = cfg.get("targets", {}).get(product_id)
     new_ok = [o for o in priced if o["condition"] == "new" and o.get("in_stock") is not False]
     clean = [o for o in new_ok if not o["suspicious"]]
+    # Un precio recordado nunca es «el mejor» si hay alguno visto ahora mismo
+    if any(not o.get("from_index") for o in clean):
+        clean = [o for o in clean if not o.get("from_index")]
     confirmed = [o for o in clean if (o.get("verification") or {}).get("status") in ("verified", "price_changed")]
     # Mejor precio = el más barato COMPROBADO ahora en la tienda; si no se pudo comprobar ninguno, el más barato
     best_new = confirmed[0] if confirmed else (clean[0] if clean else None)

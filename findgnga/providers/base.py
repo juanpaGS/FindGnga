@@ -120,7 +120,7 @@ def price_band(product: dict[str, Any], category: str) -> tuple[float, float]:
 
 
 SECOND_HAND_SITES = ("wallapop", "vinted", "milanuncios", "todocoleccion", "cashconverters", "cash converters",
-                     "backmarket", "back market", "eurocash", "webuy.com", "cex", "realcash", "segunda mano")
+                     "backmarket", "back market", "rebuy", "eurocash", "webuy.com", "cex", "realcash", "segunda mano")
 
 
 def is_second_hand_site(store_name: str | None, url: str | None) -> bool:

@@ -13,6 +13,7 @@ devuelve la ficha completa, aplicando lo que el usuario haya escrito de más (RA
 from __future__ import annotations
 
 import copy
+import math
 import re
 from functools import lru_cache
 from typing import Any
@@ -447,7 +448,8 @@ def identify(item_type: str, text: str, catalog_id: str | None = None) -> dict[s
     return {"specs": specs, "catalog_id": entry["id"] if entry else None, "name": name, "source": source,
             "quality": (entry or {}).get("quality"), "guess": guess if text.strip() else "",
             "sheet": spec_sheet(item_type, specs), "warnings": warn,
-            "colors": specs.get("colors") or (entry or {}).get("colors") or []}
+            "colors": specs.get("colors") or (entry or {}).get("colors") or [],
+            "dims": dims(item_type, specs, entry["id"] if entry else None)}
 
 
 # ------------------------------------------------------------------ ficha legible
@@ -536,3 +538,210 @@ def spec_sheet(item_type: str, s: dict[str, Any]) -> list[list[str]]:
     if s.get("color"):
         rows.append(("Color", COLOR_ES.get(s["color"], s["color"])))
     return [[k, str(v)] for k, v in rows if v not in (None, "", False)]
+
+
+# ------------------------------------------------------------------ medidas reales (cm)
+#
+# Para dibujar «Mi escritorio» a escala. Prioridad: data/dimensions.json (por id del catálogo) →
+# tablas de Apple (MacBook, Mac mini/Studio, iMac) → deducido de la ficha (pulgadas, formato…).
+# w = ancho, d = fondo, h = alto, tal y como se apoya en la mesa. «approx» = orientativo.
+
+ASPECTS = {"16:9": 16 / 9, "16:10": 1.6, "21:9": 64 / 27, "32:9": 32 / 9, "3:2": 1.5, "4:3": 4 / 3}
+
+# MacBook (línea, pulgadas de la tabla, ¿chip M1?) → (ancho, fondo, grosor, pulgadas reales, formato de pantalla)
+MAC_LAPTOP_DIMS = {
+    ("air", 13, True): (30.41, 21.24, 1.61, 13.3, 1.6),
+    ("air", 13, False): (30.41, 21.5, 1.13, 13.6, 2560 / 1664),
+    ("air", 15, False): (34.04, 23.76, 1.15, 15.3, 2880 / 1864),
+    ("pro", 13, None): (30.41, 21.24, 1.56, 13.3, 1.6),
+    ("pro", 14, None): (31.26, 22.12, 1.55, 14.2, 3024 / 1964),
+    ("pro", 16, None): (35.57, 24.81, 1.68, 16.2, 3456 / 2234),
+}
+KEYBOARD_DIMS = {  # tamaño → (ancho, fondo, alto de membrana, alto mecánico)
+    "full": (44.0, 14.0, 2.4, 4.0), "tkl": (36.0, 13.5, 2.2, 4.0), "75": (32.0, 13.0, 2.0, 4.0),
+    "60": (29.5, 10.5, 2.0, 4.0), "compact": (28.0, 12.0, 1.6, 3.5),
+}
+DIM_KEYS = ("w", "h", "d")
+DIM_RANGE = (0.3, 320.0)   # cualquier medida de un objeto (cm)
+
+
+@lru_cache(maxsize=1)
+def _dims_file() -> dict[str, Any]:
+    try:
+        return storage.load_catalog_raw("dimensions")
+    except (OSError, ValueError):
+        return {"items": {}, "desks": []}
+
+
+def desk_presets() -> list[dict[str, Any]]:
+    return copy.deepcopy(_dims_file().get("desks", []))
+
+
+def panel_cm(diag_in: float, ratio: float) -> tuple[float, float]:
+    """Ancho y alto de la zona visible a partir de la diagonal (pulgadas) y el formato."""
+    diag = float(diag_in) * 2.54
+    h = diag / (1 + ratio * ratio) ** 0.5
+    return round(h * ratio, 2), round(h, 2)
+
+
+def _ratio(s: dict[str, Any]) -> float:
+    if s.get("res_w") and s.get("res_h"):
+        return float(s["res_w"]) / float(s["res_h"])
+    return ASPECTS.get(s.get("aspect") or "16:9", 16 / 9)
+
+
+def monitor_dims(s: dict[str, Any], base: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Medidas de un monitor: panel según diagonal y formato, marcos, pie y curvatura."""
+    base = base or {}
+    size = float(s.get("size_in") or 27)
+    ratio = _ratio(s)
+    pw, ph = panel_cm(size, ratio)
+    aspect = s.get("aspect") or "16:9"
+    curved = bool(s.get("curved")) or aspect == "32:9" or bool(base.get("curve_r"))
+    curve_r = base.get("curve_r") or ((1000 if aspect == "32:9" else 1800 if aspect == "21:9" else 1500) if curved else None)
+    bezel, chin = float(base.get("bezel", 0.8)), float(base.get("chin", 1.5))
+    chord, sag = pw, 0.0
+    if curve_r:
+        r = curve_r / 10
+        th = pw / r
+        chord, sag = 2 * r * math.sin(th / 2), r * (1 - math.cos(th / 2))
+    gaming = (s.get("refresh_hz") or 60) >= 144
+    stand = base.get("stand") or ("v" if gaming or curved else "plate")
+    w = float(base.get("w") or round(chord + 2 * bezel, 1))
+    body_t = float(base.get("body_t") or round(4.5 + sag * 0.6, 1))
+    stand_w = float(base.get("stand_w") or (min(45.0, max(28.0, w * 0.4)) if stand == "v" else min(28.0, max(18.0, w * 0.38))))
+    stand_d = float(base.get("stand_d") or (40.0 if aspect == "32:9" else 23.0 if stand == "v" else 20.0))
+    if base.get("h") and not base.get("lift"):
+        lift = max(0.0, float(base["h"]) - ph - bezel - chin)
+    else:
+        lift = float(base.get("lift", 10.0))
+    h = float(base.get("h") or round(lift + ph + bezel + chin, 1))
+    d = float(base.get("d") or max(stand_d, body_t + sag))
+    out = {"w": round(w, 1), "h": round(h, 1), "d": round(d, 1), "diag_in": size, "ratio": round(ratio, 4),
+           "panel_w": pw, "panel_h": ph, "bezel": bezel, "chin": chin, "lift": round(lift, 1), "body_t": body_t,
+           "stand": stand, "stand_w": stand_w, "stand_d": stand_d}
+    if curve_r:
+        out.update(curve_r=curve_r, sagitta=round(sag, 1))
+    return out
+
+
+def _mac_dims(item_type: str, s: dict[str, Any]) -> dict[str, Any] | None:
+    line, gen = s.get("model_line"), s.get("chip_gen") or 4
+    if item_type == "laptop" and line in ("air", "pro"):
+        size = s.get("screen_in") or (13 if line == "air" else 14)
+        size = min((13, 14, 15, 16), key=lambda x: abs(x - float(size)))
+        key = (line, size, gen == 1) if line == "air" else (line, size, None)
+        if key not in MAC_LAPTOP_DIMS:
+            key = min(MAC_LAPTOP_DIMS, key=lambda k: (k[0] != line, abs(k[1] - size)))
+        w, d, h, inch, ratio = MAC_LAPTOP_DIMS[key]
+        pw, ph = panel_cm(inch, ratio)
+        return {"w": w, "d": d, "h": h, "screen_in": inch, "ratio": round(ratio, 4), "panel_w": pw, "panel_h": ph,
+                "src": "Apple"}
+    if item_type == "desktop":
+        if line == "imac":
+            pw, ph = panel_cm(23.5, 16 / 9)
+            return {"w": 54.7, "h": 46.1, "d": 14.7, "panel_w": pw, "panel_h": ph, "diag_in": 23.5, "ratio": round(16 / 9, 4),
+                    "bezel": 1.35, "chin": 4.4, "lift": round(46.1 - ph - 1.35 - 4.4, 1), "body_t": 1.15,
+                    "stand": "imac", "stand_w": 13.0, "stand_d": 14.7, "src": "Apple"}
+        if line == "studio":
+            return {"w": 19.7, "d": 19.7, "h": 9.5, "src": "Apple"}
+        if line == "mini":
+            return {"w": 12.7, "d": 12.7, "h": 5.0, "src": "Apple"} if gen >= 4 else {"w": 19.7, "d": 19.7, "h": 3.6, "src": "Apple"}
+    return None
+
+
+def _default_dims(item_type: str, s: dict[str, Any]) -> dict[str, Any]:
+    """Medidas típicas cuando el modelo no está en el catálogo (orientativas)."""
+    t = item_type
+    if t == "laptop":
+        inch = float(s.get("screen_in") or 15.6)
+        pw, ph = panel_cm(inch, 16 / 9 if inch >= 15 else 1.6)
+        thick = 2.6 if s.get("gpu_tier") == "high" else 2.0
+        return {"w": round(pw + 2.2, 1), "d": round((pw + 2.2) * 0.69, 1), "h": thick, "screen_in": inch,
+                "ratio": round(pw / ph, 4), "panel_w": pw, "panel_h": ph}
+    if t == "desktop":
+        return {"w": 21.0, "h": 46.0, "d": 45.0, "floor": True}
+    if t == "ps5":
+        model, ed = s.get("model") or ("pro" if s.get("edition") == "pro" else "slim"), s.get("edition") or "standard"
+        if model == "fat":
+            return {"w": 9.2 if ed == "digital" else 10.4, "h": 39.0, "d": 26.0}
+        if model == "pro" or ed == "pro":
+            return {"w": 8.9, "h": 38.8, "d": 21.6}
+        return {"w": 8.0 if ed == "digital" else 9.6, "h": 35.8, "d": 21.6}
+    if t == "keyboard":
+        mech = bool(s.get("mechanical"))
+        w, d, hm, hk = KEYBOARD_DIMS.get(s.get("size") or ("tkl" if mech else "full"), KEYBOARD_DIMS["full"])
+        return {"w": w, "d": d, "h": hk if mech else hm}
+    if t == "mouse":
+        if s.get("vertical"):
+            return {"w": 7.0, "d": 10.8, "h": 7.1}
+        if s.get("trackpad"):
+            return {"w": 16.0, "d": 11.5, "h": 1.1}
+        return {"w": 8.4, "d": 12.5, "h": 5.1} if s.get("ergonomic") else {"w": 6.5, "d": 11.8, "h": 3.9}
+    if t == "phone":
+        return {"w": 7.1, "d": 14.7, "h": 0.8}
+    if t == "tablet":
+        pw, ph = panel_cm(float(s.get("size_in") or 11), 1.43)
+        return {"w": round(pw + 1.4, 1), "d": round(ph + 1.4, 1), "h": 0.6}
+    if t == "headset":
+        return {"w": 6.0, "d": 4.5, "h": 2.2} if s.get("form") == "in_ear" else {"w": 17.5, "d": 8.5, "h": 20.0}
+    if t == "light":
+        return {"w": 45.0, "d": 9.0, "h": 3.0}
+    if t == "webcam":
+        return {"w": 9.4, "d": 2.6, "h": 2.9}
+    if t == "hub":
+        return {"w": 4.3, "d": 13.1, "h": 14.0} if s.get("kind") == "dock" else {"w": 11.5, "d": 4.5, "h": 1.5}
+    if t == "speakers":
+        return {"w": 10.0, "d": 12.0, "h": 17.0}
+    if t == "arm":
+        return {"w": 7.0, "d": 9.0, "h": 45.0, "clamp_min": 1.0, "clamp_max": 8.5}
+    if t == "mousepad":
+        return {"w": float(s.get("w_cm") or 30), "d": float(s.get("d_cm") or 25), "h": 0.3}
+    if t == "monitor":
+        return monitor_dims(s)
+    return {"w": 20.0, "d": 20.0, "h": 5.0}
+
+
+def dims(item_type: str, specs: dict[str, Any] | None = None, catalog_id: str | None = None) -> dict[str, Any]:
+    """Medidas reales (cm) de un objeto del escritorio: catálogo, tablas de Apple o deducidas de su ficha."""
+    s = specs or {}
+    known = _dims_file().get("items", {}).get(catalog_id or "")
+    if item_type == "monitor":
+        out = monitor_dims(s, known)
+        src = "fabricante" if known and not known.get("approx") else "orientativo"
+        out.update(approx=src != "fabricante", src=src)
+        return out
+    if known:
+        out = {**_default_dims(item_type, s), **copy.deepcopy(known)}
+        out["approx"] = bool(known.get("approx"))
+        out["src"] = known.get("src") or ("orientativo" if out["approx"] else "fabricante")
+    elif s.get("platform") == "mac" and (mac := _mac_dims(item_type, s)):
+        out = {**mac, "approx": False}
+    else:
+        out = {**_default_dims(item_type, s), "approx": True, "src": "deducido"}
+    if item_type == "mousepad" and s.get("w_cm") and s.get("d_cm"):
+        out.update(w=float(s["w_cm"]), d=float(s["d_cm"]))
+    return out
+
+
+def resolve_dims(auto: dict[str, Any], override: dict[str, Any] | None) -> dict[str, Any]:
+    """Medidas automáticas + las que el usuario corrige a mano (ancho/fondo/alto en cm).
+
+    En un monitor, el ancho cambia el marco, el alto la altura del pie y el fondo el pie
+    (la pantalla sigue siendo la de sus pulgadas)."""
+    out = dict(auto)
+    o = {k: float(v) for k, v in (override or {}).items() if k in DIM_KEYS and v is not None}
+    if not o:
+        return out
+    lo, hi = DIM_RANGE
+    o = {k: min(hi, max(lo, v)) for k, v in o.items()}
+    if "panel_h" in out and "lift" in out:   # monitor / iMac
+        if "w" in o:
+            out["bezel"] = round(max(0.2, (o["w"] - out.get("panel_w", o["w"])) / 2), 2)
+        if "h" in o:
+            out["lift"] = round(max(0.0, o["h"] - out["panel_h"] - out.get("bezel", 0.8) - out.get("chin", 1.5)), 1)
+        if "d" in o:
+            out["stand_d"] = o["d"]
+    out.update(o)
+    out["custom"] = True
+    return out

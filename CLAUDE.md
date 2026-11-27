@@ -8,7 +8,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 - Python ≥3.10 + FastAPI (`findgnga/`), web sin build (`web/`: index.html, app.js, desk-view.js, desk3d.js, styles.css).
 - 3D: Three.js r160 copiado en `web/vendor/three/` (import map en index.html; sin npm ni CDN).
 - `./run.sh` (macOS/Linux) · `run.bat` (Windows) → http://127.0.0.1:8000
-- Tests: `.venv/bin/python -m pytest -q` (89 tests). CI: `.github/workflows/tests.yml`.
+- Tests: `.venv/bin/python -m pytest -q` (107 tests). CI: `.github/workflows/tests.yml`.
 - CLI: `python -m findgnga.cli refresh|diagnose|doctor|export|import`.
 
 ## Mapa del código
@@ -56,3 +56,13 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
   descartarse; en consolas se rechazan teles/monitores que mencionan la PS5 (`NOT_CONSOLE`). UI «liquid glass»
   (capa al final de styles.css: fondo aurora, cristal con backdrop-filter, View Transitions en `go()`, respeta
   reduced-motion); la dirección #vista y atrás/adelante cambian de sección (`hashchange`).
+- v0.7 búsqueda: lector `providers/rebuy.py` (reacondicionados, HTML renderizado); `price_index.py` = índice propio
+  (`data/user/price_index.json`): guarda cada anuncio aceptado y, si una FUENTE falla hoy, recupera su último precio
+  (`from_index`, `seen_at`, nunca «mejor» si hay precio fresco). `match_confidence` (0-100) por anuncio; en consolas se
+  rechazan títulos que empiezan por accesorio (`CONSOLE_ACCESSORY_START`). Probadas sin éxito (27 nov): Coolmod, VsGamers,
+  Alternate, LDLC, Life Informática, Beep (JS), Neobyte, Aussar, Back Market (403).
+- v0.7 escritorio: `desk.table` (medidas en cm, forma rect/L, patas, material; presets en `data/dimensions.json`),
+  medidas reales por objeto (`devices.dims`, corregibles con `dims`), `POST /api/desk/fit` (fuera de mesa, solapes).
+  desk3d.js a escala real, cámaras 1-4, medidas (M), teclado (flechas/Q/E/N/Enter/Esc).
+- v0.7 web: tokens de movimiento (`--dur-*`, `--ease-*`), pestañas = `<nav>` con `aria-current`, píldora animada,
+  `toast()/announce()/skeleton()` globales (`window.FG`), tema auto/claro/oscuro (`FG.theme`), contraste AA revisado.

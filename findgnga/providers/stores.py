@@ -9,7 +9,7 @@ from urllib.parse import quote_plus
 import httpx
 
 from .. import storage
-from . import pccomponentes
+from . import pccomponentes, rebuy
 from .base import fetch_html
 from .extract import extract_listings
 
@@ -17,9 +17,11 @@ from .extract import extract_listings
 # (game.es/buscar/... da 404 y carrefour.es/?q=... devuelve la portada sin productos).
 # Amazon: responde con una comprobación antirobots (no la saltamos); sus precios llegan por SerpApi.
 # Fnac, El Corte Inglés y Worten responden 403 a los programas.
+# Probadas el 27 nov 2026 sin éxito: Coolmod y VsGamers (el buscador va por JS y la URL da la portada),
+# Neobyte, Aussar y Back Market (403), Alternate, LDLC, Life Informática y Beep (resultados cargados por JS).
 SKIP = {"aliexpress", "coolmod", "backmarket", "ebay", "game", "carrefour", "amazon", "fnac", "elcorteingles", "worten"}
 # Tiendas con lector propio (más datos que el genérico); si falla se usa el genérico
-DEDICATED = {"pccomponentes": pccomponentes.search}
+DEDICATED = {"pccomponentes": pccomponentes.search, "rebuy": rebuy.search}
 
 
 async def _one(client: httpx.AsyncClient, store: dict[str, Any], query: str) -> tuple[str, list[dict[str, Any]], str | None]:

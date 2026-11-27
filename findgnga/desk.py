@@ -651,3 +651,351 @@ def recommend(desk: dict[str, Any] | None = None, today: date | None = None) -> 
             sections.append({"id": key, "icon": icon, "title": title, "desc": desc, "items": R.out[key], "monitors": mons})
     return {"sections": sections, "notes": list(dict.fromkeys(notes)),
             "count": sum(len(x["items"]) + len(x["monitors"]) for x in sections), "empty": not ctx.items}
+
+
+# ------------------------------------------------------------------ la mesa: medidas reales (v0.6)
+#
+# Todo en centímetros. Origen = centro del tablero principal; x hacia la derecha, z hacia ti.
+# Una mesa en L añade un «retorno» en un lado que sale hacia ti (return_w × return_d desde el borde
+# trasero). Las posiciones de los objetos (`pos`) se guardan en metros, como las usa el 3D.
+
+TABLE_SHAPES = ("rect", "l_left", "l_right")
+TABLE_LEGS = ("four", "a_frame", "t_frame", "standing", "trestle", "drawers")
+TABLE_MATERIALS = ("oak", "walnut", "white", "black", "bamboo", "gray", "glass")
+LEG_COLORS = ("black", "white", "silver")
+TABLE_LIMITS = {"width_cm": (60.0, 300.0), "depth_cm": (40.0, 120.0), "height_cm": (55.0, 130.0), "top_cm": (1.0, 8.0),
+                "corner_cm": (0.0, 30.0), "return_w_cm": (30.0, 120.0), "return_d_cm": (60.0, 220.0)}
+TABLE_DEFAULT: dict[str, Any] = {"preset": "custom", "width_cm": 160.0, "depth_cm": 70.0, "height_cm": 74.0, "top_cm": 2.5,
+                                 "shape": "rect", "corner_cm": 0.0, "return_w_cm": 60.0, "return_d_cm": 120.0,
+                                 "legs": "four", "material": "oak", "leg_color": "black"}
+SIDE_ES = {"front": "por delante", "back": "por detrás", "left": "por la izquierda", "right": "por la derecha"}
+TOL = 0.5   # cm: menos que esto no se avisa (redondeos)
+
+
+def normalize_table(table: dict[str, Any] | None, style: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Mesa con valores válidos y coherentes. Sin `table` (escritorios de antes) se deduce del estilo."""
+    t = dict(TABLE_DEFAULT)
+    style = style or {}
+    if not table:
+        try:
+            if float(style.get("width") or 0) > 0:
+                t["width_cm"] = float(style["width"]) * 100
+            if float(style.get("depth") or 0) > 0:
+                t["depth_cm"] = float(style["depth"]) * 100
+        except (TypeError, ValueError):
+            pass
+        if style.get("desk") in TABLE_MATERIALS:
+            t["material"] = style["desk"]
+        if style.get("legs") in LEG_COLORS:
+            t["leg_color"] = style["legs"]
+    else:
+        t.update({k: v for k, v in table.items() if k in TABLE_DEFAULT and v is not None})
+    for k, (lo, hi) in TABLE_LIMITS.items():
+        try:
+            v = float(t[k])
+        except (TypeError, ValueError):
+            v = float(TABLE_DEFAULT[k])
+        t[k] = round(min(hi, max(lo, v)), 1)
+    for k, allowed in (("shape", TABLE_SHAPES), ("legs", TABLE_LEGS), ("material", TABLE_MATERIALS), ("leg_color", LEG_COLORS)):
+        if t[k] not in allowed:
+            t[k] = TABLE_DEFAULT[k]
+    t["preset"] = str(t.get("preset") or "custom")[:60]
+    t["corner_cm"] = round(max(0.0, min(t["corner_cm"], min(t["width_cm"], t["depth_cm"]) / 2 - 1)), 1)
+    if t["shape"] != "rect":
+        t["return_d_cm"] = max(t["return_d_cm"], t["depth_cm"] + 10)
+        t["return_w_cm"] = min(t["return_w_cm"], t["width_cm"] - 20)
+    return t
+
+
+def presets() -> list[dict[str, Any]]:
+    """Mesas reales habituales (medidas orientativas si llevan approx)."""
+    out = []
+    for p in devices.desk_presets():
+        t = normalize_table({k: v for k, v in p.items() if k in TABLE_DEFAULT})
+        t["preset"] = p["id"]
+        out.append({"id": p["id"], "name": p["name"], "approx": bool(p.get("approx")), "table": t})
+    return out
+
+
+def table_rects(t: dict[str, Any]) -> list[tuple[float, float, float, float]]:
+    """Rectángulos (x0, z0, x1, z1) que forman el tablero."""
+    W, D = t["width_cm"], t["depth_cm"]
+    rects = [(-W / 2, -D / 2, W / 2, D / 2)]
+    rw, rd = t["return_w_cm"], t["return_d_cm"]
+    if t["shape"] == "l_right":
+        rects.append((W / 2 - rw, -D / 2, W / 2, -D / 2 + rd))
+    elif t["shape"] == "l_left":
+        rects.append((-W / 2, -D / 2, -W / 2 + rw, -D / 2 + rd))
+    return rects
+
+
+def table_corners(t: dict[str, Any]) -> list[tuple[float, float, int, int]]:
+    """Esquinas exteriores (x, z, sentido x, sentido z): las que se redondean con `corner_cm`."""
+    W, D, rw, rd = t["width_cm"], t["depth_cm"], t["return_w_cm"], t["return_d_cm"]
+    back = [(-W / 2, -D / 2, -1, -1), (W / 2, -D / 2, 1, -1)]
+    if t["shape"] == "l_right":
+        return back + [(-W / 2, D / 2, -1, 1), (W / 2, -D / 2 + rd, 1, 1), (W / 2 - rw, -D / 2 + rd, -1, 1)]
+    if t["shape"] == "l_left":
+        return back + [(W / 2, D / 2, 1, 1), (-W / 2, -D / 2 + rd, -1, 1), (-W / 2 + rw, -D / 2 + rd, 1, 1)]
+    return back + [(-W / 2, D / 2, -1, 1), (W / 2, D / 2, 1, 1)]
+
+
+def on_table(t: dict[str, Any], x: float, z: float) -> bool:
+    if not any(x0 - 1e-6 <= x <= x1 + 1e-6 and z0 - 1e-6 <= z <= z1 + 1e-6 for x0, z0, x1, z1 in table_rects(t)):
+        return False
+    r = t.get("corner_cm") or 0
+    if r > 0:
+        for cx, cz, sx, sz in table_corners(t):
+            ox, oz = cx - sx * r, cz - sz * r            # centro del redondeo
+            if (x - ox) * sx > 0 and (z - oz) * sz > 0 and math.hypot(x - ox, z - oz) > r + 1e-6:
+                return False
+    return True
+
+
+def outside(t: dict[str, Any], x: float, z: float) -> tuple[float, str]:
+    """Cuánto (cm) queda un punto fuera del tablero y por qué lado."""
+    if on_table(t, x, z):
+        return 0.0, ""
+    best = (1e9, "")
+    for x0, z0, x1, z1 in table_rects(t):
+        dx = x0 - x if x < x0 else x - x1 if x > x1 else 0.0
+        dz = z0 - z if z < z0 else z - z1 if z > z1 else 0.0
+        dist = math.hypot(dx, dz)
+        side = ("left" if x < x0 else "right") if dx >= dz else ("back" if z < z0 else "front")
+        if dist < best[0]:
+            best = (dist, side)
+    if best[0] < TOL:   # dentro de los rectángulos pero en la parte redondeada de una esquina
+        r = t.get("corner_cm") or 0
+        for cx, cz, sx, sz in table_corners(t):
+            ox, oz = cx - sx * r, cz - sz * r
+            if (x - ox) * sx > 0 and (z - oz) * sz > 0:
+                return math.hypot(x - ox, z - oz) - r, ("front" if sz > 0 else "back")
+    return best
+
+
+class Part:
+    """Huella de (una parte de) un objeto: rectángulo girado en planta + franja de altura."""
+    __slots__ = ("id", "name", "kind", "cx", "cz", "w", "d", "rot", "y0", "y1")
+
+    def __init__(self, id_: str, name: str, kind: str, cx: float, cz: float, w: float, d: float, rot: float,
+                 y0: float, y1: float):
+        self.id, self.name, self.kind = id_, name, kind
+        self.cx, self.cz, self.w, self.d, self.rot, self.y0, self.y1 = cx, cz, w, d, rot, y0, y1
+
+    def corners(self) -> list[tuple[float, float]]:
+        c, s = math.cos(self.rot), math.sin(self.rot)
+        out = []
+        for lx, lz in ((-self.w / 2, -self.d / 2), (self.w / 2, -self.d / 2), (self.w / 2, self.d / 2), (-self.w / 2, self.d / 2)):
+            # igual que rotation.y de Three.js: x' = x cos + z sin, z' = -x sin + z cos
+            out.append((self.cx + lx * c + lz * s, self.cz - lx * s + lz * c))
+        return out
+
+    def samples(self, n: int = 4) -> list[tuple[float, float]]:
+        cs = self.corners()
+        pts = []
+        for i in range(4):
+            (ax, az), (bx, bz) = cs[i], cs[(i + 1) % 4]
+            pts += [(ax + (bx - ax) * k / n, az + (bz - az) * k / n) for k in range(n)]
+        return pts
+
+
+def _local(it_rot: float, ox: float, oz: float) -> tuple[float, float]:
+    c, s = math.cos(it_rot), math.sin(it_rot)
+    return ox * c + oz * s, -ox * s + oz * c
+
+
+def held_map(items: list[dict[str, Any]]) -> dict[str, str]:
+    """Qué monitores cuelgan de un brazo (en orden: un brazo doble se lleva dos). Igual que en el 3D."""
+    mons = [i for i in items if i.get("type") == "monitor"]
+    held: dict[str, str] = {}
+    k = 0
+    for a in (i for i in items if i.get("type") == "arm"):
+        n = 2 if (a.get("specs") or {}).get("dual") else 1
+        for m in mons[k:k + n]:
+            held[m["id"]] = a["id"]
+        k += n
+    return held
+
+
+def item_dims(it: dict[str, Any]) -> dict[str, Any]:
+    auto = devices.dims(it.get("type", ""), it.get("specs") or {}, it.get("catalog_id"))
+    return devices.resolve_dims(auto, it.get("dims"))
+
+
+LID_TILT = math.radians(20)   # tapa del portátil abierta a 110°
+HELD_LIFT = 17.0              # cm de la mesa al borde inferior de una pantalla en brazo
+
+
+def parts_for(it: dict[str, Any], dm: dict[str, Any], held: bool, has_host: bool) -> list[Part]:
+    """Partes de un objeto colocado (pos en metros → cm). Mismas reglas que el dibujo 3D."""
+    t, p = it.get("type"), it.get("pos") or {}
+    if not p or t is None:
+        return []
+    x, z, rot = float(p.get("x", 0)) * 100, float(p.get("z", 0)) * 100, float(p.get("rot", 0))
+    name = it.get("model") or TYPE_NAME.get(t, t)
+    w, d, h = float(dm.get("w", 20)), float(dm.get("d", 20)), float(dm.get("h", 5))
+    P = lambda kind, ox, oz, pw, pd, y0, y1: Part(it["id"], name, kind, x + _local(rot, ox, oz)[0], z + _local(rot, ox, oz)[1],
+                                                  pw, pd, rot, y0, y1)
+    if t in ("light", "webcam") and has_host:
+        return []                                       # van encima de la pantalla
+    if t == "desktop" and dm.get("floor"):
+        return [P("floor", 0, 0, w, d, 0, h)]
+    if t == "monitor" or (t == "desktop" and "panel_h" in dm):
+        body_t, sag = float(dm.get("body_t", 5)), float(dm.get("sagitta", 0))
+        depth = body_t + sag
+        lift = HELD_LIFT if held else float(dm.get("lift", 10))
+        top = lift + float(dm.get("panel_h", h)) + float(dm.get("bezel", 0.8)) + float(dm.get("chin", 1.5))
+        if held:
+            return [P("panel", 0, 0, w, depth, lift, top)]
+        off = max(0.0, (d - depth) * 0.25)
+        pz = -d / 2 + off + depth / 2
+        return [P("foot", 0, 0, float(dm.get("stand_w", w * 0.4)), float(dm.get("stand_d", d)), 0, lift),
+                P("panel", 0, pz, w, depth, lift, top)]
+    if t == "laptop":
+        lid = float(dm.get("panel_h", d * 0.85)) + 1.5
+        back = lid * math.sin(LID_TILT)
+        return [P("foot", 0, 0, w, d, 0, h), P("panel", 0, -d / 2 - back / 2, w, back, h, h + lid * math.cos(LID_TILT))]
+    if t == "ps5":
+        if it.get("orient") == "horizontal":
+            return [P("foot", 0, 0, h, d, 0, w)]
+        return [P("foot", 0, 0, w, d, 0, h)]
+    if t == "speakers":
+        span = float(it.get("span") or 0.45) * 100
+        return [Part(it["id"], name, "foot", x + _local(rot, sx * span, 0)[0], z + _local(rot, sx * span, 0)[1], w, d,
+                     rot - sx * 0.28, 0, h) for sx in (-1, 1)]
+    if t == "mousepad":
+        return [P("flat", 0, 0, w, d, 0, h)]
+    if t == "headset" and dm.get("w", 0) > 10:          # cascos de diadema en su soporte
+        return [P("foot", 0, 0, 12, 12, 0, h + 8)]
+    if t == "tablet":
+        return [P("foot", 0, 0, w, min(15.0, d), 0, d)]
+    if t == "arm":
+        return [P("clamp", 0, 0, w, d, 0, h)]
+    return [P("foot", 0, 0, w, d, 0, h)]
+
+
+def _sat(a: Part, b: Part) -> float:
+    """Solape en planta de dos rectángulos girados: lo que habría que separarlos (cm); 0 si no se tocan."""
+    ca, cb = a.corners(), b.corners()
+    depth = 1e9
+    for poly in (ca, cb):
+        for i in range(2):
+            (x0, z0), (x1, z1) = poly[i], poly[i + 1]
+            ax, az = x1 - x0, z1 - z0
+            n = math.hypot(ax, az) or 1
+            ax, az = ax / n, az / n
+            pa = [px * ax + pz * az for px, pz in ca]
+            pb = [px * ax + pz * az for px, pz in cb]
+            ov = min(max(pa), max(pb)) - max(min(pa), min(pb))
+            if ov <= 0:
+                return 0.0
+            depth = min(depth, ov)
+    return depth
+
+
+def fit_report(desk: dict[str, Any]) -> dict[str, Any]:
+    """¿Cabe todo? Avisos de lo que sobresale del borde, lo que se solapa y lo que no cabe en la mesa."""
+    t = normalize_table(desk.get("table"), desk.get("style"))
+    items = desk.get("items") or []
+    held = held_map(items)
+    has_host = any(i.get("type") in ("monitor", "laptop") or
+                   (i.get("type") == "desktop" and (i.get("specs") or {}).get("model_line") == "imac") for i in items)
+    issues: list[dict[str, Any]] = []
+    parts: list[Part] = []
+    dims_by: dict[str, dict[str, Any]] = {}
+    unplaced = []
+    for it in items:
+        dm = dims_by[it["id"]] = item_dims(it)
+        ps = parts_for(it, dm, it["id"] in held, has_host)
+        if not ps and not it.get("pos"):
+            unplaced.append(it["id"])
+        parts += ps
+    W, D = t["width_cm"], t["depth_cm"]
+    max_w = W
+    max_d = max(D, t["return_d_cm"] if t["shape"] != "rect" else D)
+    name = {i["id"]: i.get("model") or TYPE_NAME.get(i.get("type", ""), "") for i in items}
+
+    # --- no cabe en la mesa de ninguna manera
+    for it in items:
+        dm = dims_by[it["id"]]
+        if it.get("type") in ("light", "webcam", "arm") or dm.get("floor") or it["id"] in held:
+            continue
+        w, d = float(dm.get("w", 0)), float(dm.get("d", 0))
+        if it.get("type") == "ps5" and it.get("orient") == "horizontal":
+            w = float(dm.get("h", w))
+        if min(w, d) > min(max_w, max_d) or max(w, d) > max(max_w, max_d):
+            issues.append({"kind": "too_big", "severity": "bad", "ids": [it["id"]], "cm": round(max(w - max_w, d - max_d), 1),
+                           "text": f"{name[it['id']]} ({w:.0f} × {d:.0f} cm) no cabe en una mesa de {W:.0f} × {D:.0f} cm."})
+
+    # --- sobresale por el borde (lo que se apoya en la mesa)
+    for p in parts:
+        if p.kind not in ("foot", "flat"):
+            continue
+        worst, side = 0.0, ""
+        for px, pz in p.samples():
+            dist, sd = outside(t, px, pz)
+            if dist > worst:
+                worst, side = dist, sd
+        if worst > TOL:
+            frac = worst / max(1.0, min(p.w, p.d))
+            issues.append({"kind": "overhang", "severity": "bad" if frac > 0.33 else "warn", "ids": [p.id], "cm": round(worst, 1),
+                           "side": side, "text": f"{p.name} sobresale {worst:.0f} cm {SIDE_ES.get(side, '')} de la mesa."})
+
+    # --- se solapan (en planta y a la misma altura)
+    seen: dict[tuple[str, str], dict[str, Any]] = {}
+    solid = [p for p in parts if p.kind not in ("flat", "floor")]
+    for i, a in enumerate(solid):
+        for b in solid[i + 1:]:
+            if a.id == b.id:
+                continue
+            if min(a.y1, b.y1) - max(a.y0, b.y0) <= 0.2:
+                continue                                  # a distinta altura (p. ej. teclado bajo la pantalla)
+            depth = _sat(a, b)
+            if depth <= TOL:
+                continue
+            key = tuple(sorted((a.id, b.id)))
+            if key in seen and seen[key]["cm"] >= depth:
+                continue
+            panel = "panel" in (a.kind, b.kind)
+            txt = (f"{a.name} y {b.name} se solapan {depth:.0f} cm." if not panel else
+                   f"{(b if a.kind == 'panel' else a).name} choca con la pantalla de {(a if a.kind == 'panel' else b).name} "
+                   f"({depth:.0f} cm).")
+            seen[key] = {"kind": "overlap", "severity": "bad" if depth > 3 else "warn", "ids": list(key), "cm": round(depth, 1),
+                         "text": txt}
+    issues += seen.values()
+
+    # --- los monitores juntos
+    mons = [i for i in items if i.get("type") == "monitor"]
+    if len(mons) >= 2:
+        total = sum(float(dims_by[m["id"]].get("w", 0)) for m in mons)
+        if total > W:
+            issues.append({"kind": "too_big", "severity": "bad", "ids": [m["id"] for m in mons], "cm": round(total - W, 1),
+                           "text": f"Tus {len(mons)} monitores miden {total:.0f} cm de ancho y la mesa {W:.0f} cm."})
+
+    # --- brazos de pinza
+    for a in (i for i in items if i.get("type") == "arm"):
+        dm = dims_by[a["id"]]
+        cmax = float(dm.get("clamp_max") or 8.5)
+        if t["top_cm"] > cmax:
+            issues.append({"kind": "clamp", "severity": "bad", "ids": [a["id"]], "cm": round(t["top_cm"] - cmax, 1),
+                           "text": f"La pinza de {name[a['id']]} abre hasta {cmax:g} cm y el tablero mide {t['top_cm']:g} cm."})
+        if t["material"] == "glass":
+            issues.append({"kind": "clamp", "severity": "warn", "ids": [a["id"]], "cm": 0,
+                           "text": "Un brazo de pinza en una mesa de cristal puede romperla: usa un refuerzo o pie de apoyo."})
+
+    area = sum((x1 - x0) * (z1 - z0) for x0, z0, x1, z1 in table_rects(t))
+    if t["shape"] != "rect":
+        area -= t["return_w_cm"] * D   # el retorno empieza en el borde trasero: esa parte ya cuenta en el tablero
+    used = sum(p.w * p.d for p in parts if p.kind in ("foot", "clamp"))
+    order = {"bad": 0, "warn": 1}
+    issues.sort(key=lambda x: (order.get(x["severity"], 2), -x.get("cm", 0)))
+    return {"ok": not issues, "issues": issues, "table": t, "area_cm2": round(area), "used_pct": round(min(100.0, 100 * used / max(area, 1))),
+            "unplaced": unplaced}
+
+
+def desk_view(desk: dict[str, Any]) -> dict[str, Any]:
+    """El escritorio guardado + mesa normalizada + medidas automáticas de cada objeto (para el 3D)."""
+    out = {**desk, "table": normalize_table(desk.get("table"), desk.get("style"))}
+    out["items"] = [{**it, "dims_auto": devices.dims(it.get("type", ""), it.get("specs") or {}, it.get("catalog_id"))}
+                    for it in desk.get("items", [])]
+    return out

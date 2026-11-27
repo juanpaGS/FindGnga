@@ -326,6 +326,12 @@ class DeskPos(BaseModel):
     rot: float = Field(0, ge=-7, le=7)
 
 
+class DeskDims(BaseModel):
+    w: float | None = Field(None, ge=0.3, le=320)
+    h: float | None = Field(None, ge=0.3, le=320)
+    d: float | None = Field(None, ge=0.3, le=320)
+
+
 class DeskItem(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8], max_length=40)
     type: Literal[desk_mod.ITEM_TYPES]  # type: ignore[valid-type]
@@ -335,11 +341,40 @@ class DeskItem(BaseModel):
     paid: float | None = Field(None, ge=0, le=20000)          # lo que pagaste: las mejoras tienen que costar menos
     color: str | None = Field(None, pattern=r"^#[0-9a-fA-F]{6}$")
     pos: DeskPos | None = None                                # posición en el escritorio 3D (metros)
+    dims: DeskDims | None = None                              # medidas corregidas a mano (cm)
+    orient: Literal["vertical", "horizontal"] | None = None   # PS5 de pie o tumbada
+
+
+class DeskTable(BaseModel):
+    """La mesa con sus medidas reales (cm). Los límites son los de mesas reales (de 60 a 300 cm de ancho…)."""
+    preset: str = Field("custom", max_length=60)
+    width_cm: float = Field(160, ge=desk_mod.TABLE_LIMITS["width_cm"][0], le=desk_mod.TABLE_LIMITS["width_cm"][1])
+    depth_cm: float = Field(70, ge=desk_mod.TABLE_LIMITS["depth_cm"][0], le=desk_mod.TABLE_LIMITS["depth_cm"][1])
+    height_cm: float = Field(74, ge=desk_mod.TABLE_LIMITS["height_cm"][0], le=desk_mod.TABLE_LIMITS["height_cm"][1])
+    top_cm: float = Field(2.5, ge=desk_mod.TABLE_LIMITS["top_cm"][0], le=desk_mod.TABLE_LIMITS["top_cm"][1])
+    shape: Literal[desk_mod.TABLE_SHAPES] = "rect"  # type: ignore[valid-type]
+    corner_cm: float = Field(0, ge=desk_mod.TABLE_LIMITS["corner_cm"][0], le=desk_mod.TABLE_LIMITS["corner_cm"][1])
+    return_w_cm: float = Field(60, ge=desk_mod.TABLE_LIMITS["return_w_cm"][0], le=desk_mod.TABLE_LIMITS["return_w_cm"][1])
+    return_d_cm: float = Field(120, ge=desk_mod.TABLE_LIMITS["return_d_cm"][0], le=desk_mod.TABLE_LIMITS["return_d_cm"][1])
+    legs: Literal[desk_mod.TABLE_LEGS] = "four"  # type: ignore[valid-type]
+    material: Literal[desk_mod.TABLE_MATERIALS] = "oak"  # type: ignore[valid-type]
+    leg_color: Literal[desk_mod.LEG_COLORS] = "black"  # type: ignore[valid-type]
 
 
 class Desk(BaseModel):
     items: list[DeskItem] = Field([], max_length=40)
-    style: dict[str, str | float | bool | list[str]] = {}    # madera, patas, pared, luz, decoración…
+    style: dict[str, str | float | bool | list[str]] = {}    # luz, suelo, pared, fondo de pantalla, decoración…
+    table: DeskTable | None = None                            # la mesa (medidas reales)
+
+
+class FitItem(DeskItem):
+    span: float | None = Field(None, ge=0, le=3)              # altavoces: separación de cada uno al centro (m)
+
+
+class FitIn(BaseModel):
+    items: list[FitItem] = Field([], max_length=40)
+    table: DeskTable | None = None
+    style: dict[str, str | float | bool | list[str]] = {}
 
 
 class IdentifyIn(BaseModel):
@@ -350,16 +385,30 @@ class IdentifyIn(BaseModel):
 
 @app.get("/api/desk")
 def read_desk() -> dict[str, Any]:
-    return desk_mod.read_desk()
+    """El escritorio, con la mesa (cm) y las medidas reales de cada objeto (`dims_auto`)."""
+    return desk_mod.desk_view(desk_mod.read_desk())
 
 
 @app.put("/api/desk")
 def write_desk(desk: Desk) -> dict[str, Any]:
     """Guarda el escritorio y actualiza los dispositivos del perfil (la búsqueda se adapta a él)."""
     data = desk.model_dump(mode="json")
+    data["table"] = desk_mod.normalize_table(data.get("table"), data.get("style"))
     storage.write_user("desk", data)
     profile = desk_mod.sync_profile(data)
-    return {**data, "profile": profile}
+    return {**desk_mod.desk_view(data), "profile": profile}
+
+
+@app.get("/api/desk/presets")
+def desk_presets() -> dict[str, Any]:
+    """Mesas reales habituales (IKEA, Flexispot…) con sus medidas; las marcadas approx son orientativas."""
+    return {"items": desk_mod.presets(), "limits": desk_mod.TABLE_LIMITS, "default": desk_mod.TABLE_DEFAULT}
+
+
+@app.post("/api/desk/fit")
+def desk_fit(req: FitIn) -> dict[str, Any]:
+    """¿Cabe todo? Lo que sobresale, se solapa o no cabe, con las posiciones que manda el 3D."""
+    return desk_mod.fit_report(req.model_dump(mode="json"))
 
 
 @app.post("/api/desk/identify")
