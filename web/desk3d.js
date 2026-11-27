@@ -1128,8 +1128,8 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   /* Cuarto a la medida de la mesa: un rincón recogido (pared del fondo + laterales), no una nave enorme */
   const roomBox = () => {
     const b = tableBox(T);
-    const halfX = Math.max(1.3, (b.x1 - b.x0) / 2 + 0.75);
-    return { x0: (b.x0 + b.x1) / 2 - halfX, x1: (b.x0 + b.x1) / 2 + halfX, zb: wallZ(), zf: b.z1 + 1.25, h: 2.5 };
+    const halfX = Math.max(1.05, (b.x1 - b.x0) / 2 + 0.45);
+    return { x0: (b.x0 + b.x1) / 2 - halfX, x1: (b.x0 + b.x1) / 2 + halfX, zb: wallZ(), zf: b.z1 + 0.95, h: 2.4 };
   };
   function setRoom() {
     const R = roomBox();
@@ -1152,6 +1152,17 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
       const w = new THREE.Mesh(new THREE.PlaneGeometry(RD, R.h), sideM);
       w.rotation.y = -sx * Math.PI / 2; w.position.set(sx < 0 ? R.x0 : R.x1, R.h / 2, cz); w.receiveShadow = true; g.add(w);
     }
+    // techo con una lámpara empotrada: cierra el cuarto por arriba
+    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(RW, RD), mat(dark ? 0x3a3a3e : 0xf7f5f1, { roughness: 1 }));
+    ceil.rotation.x = Math.PI / 2; ceil.position.set(cx, R.h, cz); g.add(ceil);
+    const cornice = mat(new THREE.Color(wc).multiplyScalar(0.82).getHex(), { roughness: 0.9 });
+    g.add(at(box(RW, 0.05, 0.03, cornice), cx, R.h - 0.025, R.zb + 0.015));
+    for (const sx of [-1, 1]) g.add(at(box(0.03, 0.05, RD, cornice), (sx < 0 ? R.x0 + 0.015 : R.x1 - 0.015), R.h - 0.025, cz));
+    const bTop = tableBox(T);
+    // disco de una sola cara mirando hacia abajo: desde la vista cenital (cámara por encima del techo) no se ve
+    const spot = new THREE.Mesh(new THREE.CircleGeometry(0.09, 32), new THREE.MeshStandardMaterial({ color: 0xffffff,
+      emissive: 0xfff1dc, emissiveIntensity: dark ? 1.2 : 0.8 }));
+    spot.rotation.x = Math.PI / 2; spot.position.set((bTop.x0 + bTop.x1) / 2, R.h - 0.004, (bTop.z0 + bTop.z1) / 2 + 0.2); g.add(spot);
     const trim = mat(isLightHex(wc) ? 0xffffff : 0x1e1e21, { roughness: 0.6 });
     g.add(at(box(RW, 0.08, 0.015, trim), cx, 0.04, R.zb + 0.008));          // rodapiés
     for (const sx of [-1, 1]) g.add(at(box(0.015, 0.08, RD, trim), (sx < 0 ? R.x0 + 0.008 : R.x1 - 0.008), 0.04, cz));
@@ -1330,7 +1341,7 @@ export function mount(container, { onSelect, onHover, onMove, onMeasures, nameOf
   /* Dentro de la mesa, pero dejando que sobresalga un poco (así se ve el aviso) */
   function clampPos(g, x, z, rot = g.rotation.y) {
     const s = g.userData.size || { w: 0.2, d: 0.2 }, b = tableBox(T);
-    if (s.floor) return [clamp(x, b.x0 - 1.2, b.x1 + 1.2), clamp(z, b.z0 + 0.12, b.z1 + 0.8)];
+    if (s.floor) return [clamp(x, b.x0 - 0.35, b.x1 + 0.35), clamp(z, b.z0 + 0.12, b.z1 + 0.7)];
     const [hx, hz] = halfExt(s, rot);
     const mx = Math.min(hx * 0.5, (b.x1 - b.x0) / 2), mz = Math.min(hz * 0.5, (b.z1 - b.z0) / 2);
     return [clamp(x, b.x0 + mx, b.x1 - mx), clamp(z, b.z0 + mz, b.z1 - mz)];
