@@ -450,6 +450,41 @@ class Recs:
             self.out["missing"].append(r)
 
 
+KIND_LABELS: dict[str, tuple[str, str]] = {
+    "keyboard": ("⌨️", "Teclados"), "mouse": ("🖱️", "Ratones"), "headset": ("🎧", "Cascos"), "light": ("💡", "Lámparas de monitor"),
+    "webcam": ("📷", "Webcams"), "hub": ("🔌", "Hubs y docks"), "charger": ("🔋", "Cargadores"), "cable": ("🧵", "Cables"),
+    "arm": ("🦾", "Brazos de monitor"), "stand": ("📐", "Soportes de portátil"), "mousepad": ("🟫", "Alfombrillas"),
+    "speakers": ("🔊", "Altavoces"), "storage": ("💾", "Almacenamiento"), "phone_acc": ("📱", "Para el móvil"),
+    "ps5_acc": ("🎮", "Para la PS5"),
+}
+
+
+def _browse(self: "Recs") -> list[dict[str, Any]]:
+    """Todo el catálogo agrupado por tipo, cada producto con su compatibilidad con TU escritorio, para comparar de un vistazo."""
+    owned = {i.get("catalog_id") for i in self.ctx.items if i.get("catalog_id")}
+    groups = []
+    for kind, (icon, label) in KIND_LABELS.items():
+        prods = [p for p in self.acc if p["kind"] == kind]
+        if not prods:
+            continue
+        items = []
+        for p in prods:
+            r = self.rec(p, p.get("notes", ""))
+            r["owned"] = p["id"] in owned
+            r["recommended"] = p["id"] in self.seen
+            items.append(r)
+        # compatibles primero, luego calidad por euro (orientativo)
+        items.sort(key=lambda r: (r["owned"], -(r["compat"]["score"] if r["compat"] else 80),
+                                  -(r["quality"] or 50) / max(r["pricing"]["final_price"] or r["product"]["ref_price"], 1) * 100))
+        fits = [r for r in items if not r["compat"] or r["compat"]["score"] >= 60]
+        groups.append({"kind": kind, "icon": icon, "label": label, "items": items, "count": len(items), "fits": len(fits),
+                       "from_price": min((r["pricing"]["final_price"] or r["product"]["ref_price"]) for r in items)})
+    return groups
+
+
+Recs.browse = _browse  # type: ignore[attr-defined]
+
+
 def recommend(desk: dict[str, Any] | None = None, today: date | None = None) -> dict[str, Any]:
     desk = desk if desk is not None else read_desk()
     ctx = Ctx(desk)
@@ -649,7 +684,7 @@ def recommend(desk: dict[str, Any] | None = None, today: date | None = None) -> 
         mons = [m for m in monitor_recs if m["section"] == key]
         if R.out[key] or mons:
             sections.append({"id": key, "icon": icon, "title": title, "desc": desc, "items": R.out[key], "monitors": mons})
-    return {"sections": sections, "notes": list(dict.fromkeys(notes)),
+    return {"sections": sections, "notes": list(dict.fromkeys(notes)), "browse": R.browse(),
             "count": sum(len(x["items"]) + len(x["monitors"]) for x in sections), "empty": not ctx.items}
 
 

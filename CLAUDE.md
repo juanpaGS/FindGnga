@@ -8,7 +8,7 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
 - Python ≥3.10 + FastAPI (`findgnga/`), web sin build (`web/`: index.html, app.js, desk-view.js, desk3d.js, styles.css).
 - 3D: Three.js r160 copiado en `web/vendor/three/` (import map en index.html; sin npm ni CDN).
 - `./run.sh` (macOS/Linux) · `run.bat` (Windows) → http://127.0.0.1:8000
-- Tests: `.venv/bin/python -m pytest -q` (107 tests). CI: `.github/workflows/tests.yml`.
+- Tests: `.venv/bin/python -m pytest -q` (108 tests). CI: `.github/workflows/tests.yml`.
 - CLI: `python -m findgnga.cli refresh|diagnose|doctor|export|import`.
 
 ## Mapa del código
@@ -66,3 +66,6 @@ una herramienta por primera vez en el proyecto (ver preferencias del usuario).
   desk3d.js a escala real, cámaras 1-4, medidas (M), teclado (flechas/Q/E/N/Enter/Esc).
 - v0.7 web: tokens de movimiento (`--dur-*`, `--ease-*`), pestañas = `<nav>` con `aria-current`, píldora animada,
   `toast()/announce()/skeleton()` globales (`window.FG`), tema auto/claro/oscuro (`FG.theme`), contraste AA revisado.
+- v0.8 accesorios: catálogo ampliado (69 productos, ref_price ORIENTATIVO); `recommend()["browse"]` = todo el catálogo
+  por tipo (`KIND_LABELS`) con compatibilidad con el escritorio; web: «📚 Todos los productos por tipo» (pestañas con
+  flechas, filtro, orden, «solo compatibles», buscar precio de los visibles).

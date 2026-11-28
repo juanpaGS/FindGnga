@@ -171,3 +171,16 @@ def test_fit_api():
                                            "items": [item("p", "ps5", "PS5 Slim Digital", 0.58, -0.1)]})
     assert r.status_code == 200 and r.json()["issues"][0]["kind"] == "overhang"
     assert client.post("/api/desk/fit", json={"items": [], "table": {"width_cm": 5}}).status_code == 422
+
+
+def test_browse_lists_every_kind_with_compat():
+    from findgnga import desk
+    d = {"items": [{"id": "a", "type": "laptop", "model": "MacBook Air M3",
+                    "specs": {"platform": "mac", "bt": True, "ports": {"usb_c": True}, "camera": True}}]}
+    groups = desk.recommend(d)["browse"]
+    kinds = {g["kind"]: g for g in groups}
+    assert kinds["keyboard"]["count"] >= 8 and kinds["mouse"]["count"] >= 8
+    kb = kinds["keyboard"]["items"]
+    assert all(r["compat"] for r in kb)
+    assert kb[0]["compat"]["score"] >= kb[-1]["compat"]["score"]
+    assert kinds["webcam"]["fits"] == 0   # el MacBook ya tiene cámara

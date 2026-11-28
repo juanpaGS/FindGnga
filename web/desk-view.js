@@ -721,6 +721,97 @@ function accessoryCard(r) {
   </article>`;
 }
 
+/* Explorador: todos los productos de cada tipo, compactos, filtrables y accesibles con teclado. */
+function browseRow(r) {
+  const p = r.product, c = r.compat, price = r.pricing.final_price ?? p.ref_price;
+  const cls = !c ? "" : c.score >= 85 ? "good" : c.score >= 60 ? "warn" : "bad";
+  const tag = r.owned ? `<span class="badge">✔ Ya lo tienes</span>` : r.recommended ? `<span class="badge b-rec">⭐ Recomendado</span>` : "";
+  return `<li class="br-row" data-name="${esc((p.name + " " + (p.notes || "")).toLowerCase())}" data-compat="${c ? c.score : 80}"
+      data-price="${price}" data-quality="${r.quality || 50}">
+    <details><summary>
+      <span class="br-name">${p.icon} ${esc(p.name)} ${tag}</span>
+      <span class="br-meta">${c ? `<span class="compat-score ${cls}" title="Compatibilidad con tu escritorio">${c.score}/100</span>` : ""}
+        ${r.quality ? `<span class="small muted" title="Calidad orientativa">Q ${r.quality}</span>` : ""}
+        <b>${r.pricing.final_price != null ? eur(price) : `≈ ${eur(price)}`}</b></span></summary>
+      <div class="br-body"><p class="small">${esc(p.notes || "")}</p>${compatBlock(c)}
+        ${r.pricing.final_price == null ? `<p class="small muted">Precio orientativo, sin comprobar hoy.</p>` : ""}
+        <div class="actions" style="justify-content:flex-start">
+          ${r.placeable && !r.owned ? `<button class="ghost small" data-place="${esc(p.id)}">🪑 Añadir a mi escritorio</button>` : ""}
+          ${productActions(p, p.name)}</div>${linksRow(r.links)}</div></details></li>`;
+}
+
+function browseSection(groups) {
+  if (!groups.length) return "";
+  return `<section id="acc-browse" aria-labelledby="brTitle"><h2 id="brTitle">📚 Todos los productos por tipo</h2>
+    <p class="muted small">Compara todo el catálogo de un vistazo: cada fila dice cuánto encaja con tus dispositivos. Pulsa una fila para ver detalles.</p>
+    <div class="chips br-tabs" role="tablist" aria-label="Tipo de producto">
+      <button class="chip" role="tab" aria-selected="true" data-kind="all">Todos (${groups.reduce((n, g) => n + g.count, 0)})</button>
+      ${groups.map((g) => `<button class="chip" role="tab" aria-selected="false" data-kind="${g.kind}"
+        title="${g.fits} compatibles · desde ${eur(g.from_price)}">${g.icon} ${esc(g.label)} <span class="muted">${g.fits}/${g.count}</span></button>`).join("")}
+    </div>
+    <div class="br-tools">
+      <label>🔍 <span class="sr-only">Buscar</span><input type="search" id="brQ" placeholder="Filtrar: marca, bluetooth, mac…" autocomplete="off"></label>
+      <label>Ordenar <select id="brSort"><option value="compat">Más compatible</option><option value="price">Más barato</option>
+        <option value="quality">Mejor calidad</option><option value="value">Calidad/precio</option></select></label>
+      <label><input type="checkbox" id="brFit" checked> Solo compatibles</label>
+      <button class="ghost small" id="brLive">🔎 Buscar precio de los visibles</button>
+    </div>
+    <p class="small muted" id="brCount" aria-live="polite"></p>
+    ${groups.map((g) => `<div class="br-group" data-kind="${g.kind}"><h3>${g.icon} ${esc(g.label)}
+        <span class="small muted">${g.fits} de ${g.count} encajan · desde ${eur(g.from_price)}</span></h3>
+      <ul class="br-list">${g.items.map(browseRow).join("")}</ul></div>`).join("")}
+  </section>`;
+}
+
+function bindBrowse(root, groups, reload) {
+  const sec = root.querySelector("#acc-browse"); if (!sec) return;
+  let kind = "all";
+  const tabs = [...sec.querySelectorAll(".br-tabs [role=tab]")];
+  const apply = () => {
+    const q = sec.querySelector("#brQ").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const fit = sec.querySelector("#brFit").checked, sort = sec.querySelector("#brSort").value;
+    let shown = 0;
+    sec.querySelectorAll(".br-group").forEach((g) => {
+      const on = kind === "all" || g.dataset.kind === kind;
+      const ul = g.querySelector(".br-list"), rows = [...ul.children];
+      const key = (li) => sort === "price" ? +li.dataset.price : sort === "quality" ? -li.dataset.quality
+        : sort === "value" ? -(li.dataset.quality / li.dataset.price) : -li.dataset.compat;
+      rows.sort((a, b) => key(a) - key(b)).forEach((li) => ul.appendChild(li));
+      let n = 0;
+      rows.forEach((li) => {
+        const vis = on && (!fit || +li.dataset.compat >= 60) && q.every((w) => li.dataset.name.includes(w));
+        li.hidden = !vis; if (vis) n++;
+      });
+      g.hidden = !on || !n; shown += n;
+    });
+    sec.querySelector("#brCount").textContent = shown ? `${shown} producto${shown > 1 ? "s" : ""}` : "Ningún producto con estos filtros.";
+  };
+  const select = (t, focus) => {
+    tabs.forEach((x) => { x.setAttribute("aria-selected", String(x === t)); x.tabIndex = x === t ? 0 : -1; x.classList.toggle("on", x === t); });
+    kind = t.dataset.kind; if (focus) t.focus(); apply();
+  };
+  tabs.forEach((t, i) => {
+    t.onclick = () => select(t);
+    t.onkeydown = (e) => {
+      const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (d) { e.preventDefault(); select(tabs[(i + d + tabs.length) % tabs.length], true); }
+      if (e.key === "Home") { e.preventDefault(); select(tabs[0], true); }
+      if (e.key === "End") { e.preventDefault(); select(tabs[tabs.length - 1], true); }
+    };
+  });
+  sec.querySelector("#brQ").oninput = apply;
+  sec.querySelector("#brSort").onchange = apply;
+  sec.querySelector("#brFit").onchange = apply;
+  sec.querySelector("#brLive").onclick = (e) => {
+    const ids = [...sec.querySelectorAll(".br-row:not([hidden]) [data-place], .br-row:not([hidden]) [data-live]")]
+      .map((b) => b.dataset.place || b.dataset.live).filter(Boolean);
+    const uniq = [...new Set(ids)].slice(0, 12);
+    if (!uniq.length) return notify("No hay productos visibles.");
+    runLiveAll(uniq, root, reload, e.target);
+  };
+  select(tabs[0]);
+}
+
 async function viewAccessories() {
   app.innerHTML = `<h1>🧩 Accesorios para tu escritorio</h1>
     <p class="muted">Según lo que tienes en <a href="#desk" data-go="desk">🪑 Mi escritorio</a>: lo que te falta (elegido para que funcione con
@@ -745,12 +836,14 @@ async function viewAccessories() {
       const nav = r.sections.map((s) => `<a class="chip" href="#acc-${s.id}">${s.icon} ${esc(s.title)} (${s.items.length + s.monitors.length})</a>`).join("");
       const liveIds = r.sections.flatMap((s) => s.items.map((i) => i.product.id));
       out.innerHTML = `${r.notes.map((n) => `<div class="notice">ℹ️ ${esc(n)}</div>`).join("")}
-        <div class="chips acc-nav">${nav}</div>
+        <div class="chips acc-nav">${nav}<a class="chip" href="#acc-browse">📚 Todo por tipo (${(r.browse || []).reduce((n, g) => n + g.count, 0)})</a></div>
         <div class="actions" style="justify-content:flex-start"><button class="primary" id="accLiveAll">🔎 Buscar precio de todos (${liveIds.length})</button>
           <span class="small muted" style="align-self:center">Cada búsqueda gasta 1-4 consultas de SerpApi.</span></div>
         ${r.sections.map((s) => `<section id="acc-${s.id}"><h2>${s.icon} ${esc(s.title)}</h2><p class="muted small">${esc(s.desc)}</p>
           ${s.monitors.map((m) => `<div class="small acc-why">👉 ${esc(m.reason)}</div>${monitorCard(m)}`).join("")}
-          ${s.items.map(accessoryCard).join("")}</section>`).join("")}`;
+          ${s.items.map(accessoryCard).join("")}</section>`).join("")}
+        ${browseSection(r.browse || [])}`;
+      bindBrowse(out, r.browse || [], load);
       $("#accLiveAll").onclick = (e) => runLiveAll([...new Set(liveIds)], out, load, e.target);
       out.querySelectorAll(".acc-nav a").forEach((a) => a.onclick = (e) => { e.preventDefault(); document.querySelector(a.getAttribute("href"))?.scrollIntoView({ behavior: "smooth" }); });
       out.querySelectorAll("[data-place]").forEach((b) => b.onclick = async () => {
